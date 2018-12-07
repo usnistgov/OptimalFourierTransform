@@ -1,5 +1,5 @@
 function [freqs, MFT] = MFT(g, t, f, bracket)
-%
+global flags
 % Ported from VBA by Allen Goldstein, NIST from:
 % http://jonova.s3.amazonaws.com/cfa/climate.xlsm
 % written by: Dr David Evans
@@ -97,18 +97,27 @@ while nFreqsDone < length(nu_MFT)
         nuV(i) = nu_MFT(nFreqsDone + i);
     end
     
-    [MFT] = EstimateContainedSinusoids (g,t,nuV);
+    [cosPart, sinPart] = EstimateContainedSinusoids (g,t,nuV);
     
     if nFreqsDone + nNuV < length(nu_MFT)
-        %SubractMultipleSinusoidsFromTS()
+        [TsV, absDev] = SubractMultipleSinusoidsFromTS(g, cosPart, sinPart, nu);
     end
     
+    freqs = zeros(1,nNuv);
     for i = 1:nNuV
         nFreqsDone = nFreqsDone + 1;
         freqs(nFreqsDone) = nuV(i) / E;
+        cosPart_MFT(nFreqsDone) = cosPart(i);
+        sinPart_MFT(nFreqsDone) = sinPart(i);        
     end
-   
 end
+nFreqs = nFreqsDone;
+if isobject(flags)
+    flags=flags.FlagHighAmplitudeSinusoids(ts, length(ts), freqs, E, cosPart, sinPart) );
+end
+
+
+
 end
 
 %============================== LOCAL FUNCTIONS ==========================%

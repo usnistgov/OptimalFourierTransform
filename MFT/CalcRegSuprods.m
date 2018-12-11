@@ -108,7 +108,7 @@ if nu == mu
        radiansNu = twoPiNuON * tau;
        c = cos(radiansNu);
        s = sin(radiansNu);
-       cc = cc + c * s;
+       cc = cc + c * c;
        cs = cs + c * s;
        ss = ss + s * s;
    end

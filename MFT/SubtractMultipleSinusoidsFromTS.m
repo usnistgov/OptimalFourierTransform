@@ -16,10 +16,10 @@ for tau = n-1:-1:0
     x = ts(tau);
     for i = 1:length(nu)
         radians = twoPiNuONArr(i) * tau;
-        x = x - (cosPart(i) * cos(radians) + sinPart(i) * sin(radians)
+        x = x - (cosPart(i) * cos(radians) + sinPart(i) * sin(radians));
     end
     ts(tau) = x;
     x = abs(x);
-    absDev = absDev + x
+    absDev = absDev + x;
 end
 end

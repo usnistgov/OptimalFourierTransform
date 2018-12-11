@@ -1,4 +1,4 @@
-function [freqs, MFT] = MFT(g, t, f, bracket)
+function [freqs, MFT, fracErr] = MFT(g, t, f, bracket)
 global flags
 % Ported from VBA by Allen Goldstein, NIST from:
 % http://jonova.s3.amazonaws.com/cfa/climate.xlsm
@@ -34,7 +34,8 @@ global flags
 % all the local subfunctions for the purpose of unit testing if the value
 % of the "nu" input (normally a double) is the string '-test'
 if ischar(g) && strcmp(g,'-test')
-    MFT = 0;
+    MFT = 0+0i;
+    fracErr = 0;
     freqs = localfunctions;
     return
 end
@@ -58,12 +59,12 @@ t0 = t(1);              % first time in the series
 Fs = 1/mean(diff(t));   % time series sample rate
 E = t(end)-t0 + 1/Fs;   % Extent (the length of the series plus one/half sample period before and after)
 
-nu_MFT = f;
+nu_MFT = f * E;
 
 
 % The Optimal Fourier Transform process may send the MFT some freqs that are converging.  
 % We need to identify and consolidate those freqs
-if any(bracket) < 0
+if length(bracket) == 0 || any(bracket) < 0
     [nu_MFT] = ConsolidateFreqs(nu_MFT,kNuConsolidate);
 else
     [nu_MFT] = ConsolidateFreqsByBracket (nu_MFT, bracket,kNuConsolidate);
@@ -97,26 +98,25 @@ while nFreqsDone < length(nu_MFT)
         nuV(i) = nu_MFT(nFreqsDone + i);
     end
     
-    [cosPart, sinPart] = EstimateContainedSinusoids (g,t,nuV);
+    [cosPart, sinPart] = EstimateContainedSinusoids (g,nuV);
     
     if nFreqsDone + nNuV < length(nu_MFT)
-        [TsV, absDev] = SubractMultipleSinusoidsFromTS(g, cosPart, sinPart, nu);
+        [TsV, absDev] = SubractMultipleSinusoidsFromTS(g, cosPart, sinPart, nuV);
     end
     
-    freqs = zeros(1,nNuv);
+    freqs = zeros(1,nNuV);
     for i = 1:nNuV
         nFreqsDone = nFreqsDone + 1;
         freqs(nFreqsDone) = nuV(i) / E;
-        cosPart_MFT(nFreqsDone) = cosPart(i);
-        sinPart_MFT(nFreqsDone) = sinPart(i);        
+        MFT(nFreqsDone) = complex(cosPart(i),sinPart(i));
     end
 end
 nFreqs = nFreqsDone;
 if isobject(flags)
-    flags=flags.FlagHighAmplitudeSinusoids(ts, length(ts), freqs, E, cosPart, sinPart) );
+    flags=flags.FlagHighAmplitudeSinusoids(g, length(ts), f, E, cosPart, sinPart);
 end
 
-
+[fracErr] = FractionalError (g, E, f, cosPart, sinPart);
 
 end
 

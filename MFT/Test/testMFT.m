@@ -19,8 +19,8 @@ classdef testMFT < matlab.unittest.TestCase
     methods (Test)
         
         function testConsolidateFreqs (testCase)
-            handle=testCase.localFunctions(1);
-            ConsolidateFreqs = handle{1};
+%             handle=testCase.localFunctions(1);
+%             ConsolidateFreqs = handle{1};
             kNuConsolidate = 0.1;
             nu_MFT = [1, 5, 5.05, 6, 16, 16.025, 25, 25];
             [act] = ConsolidateFreqs(nu_MFT,kNuConsolidate);
@@ -29,7 +29,7 @@ classdef testMFT < matlab.unittest.TestCase
         end
         
         function testConsolidateFreqsByBracket (testCase)
-            handle=testCase.localFunctions(2);
+            handle=testCase.localFunctions(1);
             ConsolidateFreqsByBracket = handle{1};
             kNuConsolidate = 0.1;
             nu_MFT = [1, 5, 5.05, 6, 16, 16.025, 25, 25, 30, 32, 32.075, 45, 59];

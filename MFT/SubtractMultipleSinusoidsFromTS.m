@@ -13,12 +13,12 @@ twoPiNuONArr = nu * twoPiON;
 
 absDev = 0;
 for tau = n-1:-1:0
-    x = ts(tau);
+    x = ts(tau+1);
     for i = 1:length(nu)
         radians = twoPiNuONArr(i) * tau;
         x = x - (cosPart(i) * cos(radians) + sinPart(i) * sin(radians));
     end
-    ts(tau) = x;
+    ts(tau+1) = x;
     x = abs(x);
     absDev = absDev + x;
 end

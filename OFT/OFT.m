@@ -1,5 +1,5 @@
 function [freqs, OFT, fracErr] = OFT (ts, time, relativeAbsDev, bDoRecon, maxNFreqsPerStage, bWaitBar)
-global kMaxNFreqsAtOnceOFT targetAbsDevW minChangeAbsDevW
+global kMaxNFreqsAtOnceOFT targetAbsDevW minChangeAbsDevW Figure
 % Ported from VBA by Allen Goldstein, NIST from:
 % http://jonova.s3.amazonaws.com/cfa/climate.xlsm
 % written by: Dr David Evans
@@ -54,6 +54,7 @@ tsStage = ts;
 if maxNFreqsPerStage < 10
     maxNFreqsPerStage = 10;
 end
+freqStage = [];
 nFreqs = 0;
 j = maxNFreqsPerStage;
 if j < kMaxNFreqsPerStage; j = kMaxNFreqsPerStage; end
@@ -66,10 +67,14 @@ waitBarOFT(stageN,'Starting First Stage',bWaitBar);
 
 while stageN < kMaxNStages
    stageN = stageN+1; 
-   waitBarOFT(stageN/kMaxNStages,sprintf('Stage %d',stageN),bWaitBar);
+   waitBarOFT(stageN/kMaxNStages,sprintf('Stage %d',stageN),bWaitBar);  
    
-   
-   [freqStage, MftStage] = OneStageOfOFT(tsStage, time, extent, bDoRecon, maxNFreqsPerStage);  
+   [freqStage, MftStage] = OneStageOfOFT(tsStage, extent, bDoRecon, maxNFreqsPerStage, freqStage);  
+   if ishandle(Figure)
+      hold on
+      plot (ts - tsStage, 'r');
+      hold off
+   end
 
     if stageN >=2
        ampBiggest = abs(MftStage(1));
@@ -85,7 +90,7 @@ while stageN < kMaxNStages
     for i = 1:length(freqStage)
        j = j + 1;
        freqs(j) = freqStage(i);
-       MFT_OFT(j) = MFTStage(i);
+       MFT_OFT(j) = MftStage(i);
        nuStage(i) = freqStage(i) * extent;
     end
     
@@ -136,11 +141,11 @@ if bDoRecon
         maxNFreqsAtOnce = ceil(maxNFreqsPerStage/3);
     end
     
-    [freqStage, ~] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, true, freqStage);
+    [freqStage, ~, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, true, freqStage);
 end
 
 % *** Main Part ***
-[freqStage, bracket] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsPerStage, false, freqStage);
+[freqStage, bracket, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsPerStage, false, freqStage);
 
 % *** Final Part ***
 dT = extent/length(tsStage);
@@ -148,12 +153,12 @@ t = 0:dT:extent-dT;
 [freqStage, MftStage, fracErr] = MFT (tsStage, t, freqStage, bracket);
 end
 %----------------
-function [nu, bracket] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu)
+function [nu, bracket, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu)
 %- Finds best frequency indices for sinusoids in ts.
 %- Tries maxNFreqsAtOnce sinusoids at once, and finds up to maxNFreqsTotal.
 %- In:  nu[1..nNu]     Guesses for nu's in the initial iteration, if present (ie if nNu > 0).
 %- Out: nu[1..nNu]     Best estimates of frequency indices of sinusoids in ts.
-global targetAbsDevW minChangeAbsDevW
+global targetAbsDevW minChangeAbsDevW Figure
 kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
 tsW = tsStage;
 NW = length(tsW);
@@ -164,7 +169,7 @@ cosPart = zeros(1,maxNFreqsTotal);
 sinPart = zeros(1,maxNFreqsTotal);
 passNArr = zeros(1,maxNFreqsTotal);
 
-absDev = AbsDevOfTS(ts,length(ts));
+absDev = AbsDevOfTS(tsW,length(tsW));
 lastAbsDev = 0;
 
 nNuInitial = length(nu);
@@ -172,30 +177,38 @@ nNu = 0;
 passN = 0;
 while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev) > minChangeAbsDevW
     passN = passN + 1;
-    
+    if ishandle(Figure)
+        plot (tsStage); 
+        hold on
+        plot (tsStage - tsW, 'r');
+        hold off
+        drawnow;
+    end
     if nNuInitial > 0
         nuGuessW=nu;
         nFreqsW = nNuInitial;
         nNuInitial=0;
     else
         [Xk]=dft(tsW);
-        [nu] = FindFreqsOfAmplitudePeaks(Xk, maxNFreqsAtOnce, nuMaxCW,  nuGuessW, nFreqsW);
+        [nuGuessW] = FindFreqsOfAmplitudePeaks(Xk, maxNFreqsAtOnce, nuMaxCW);
+        nFreqsW = length(nuGuessW);
     end
     if nFreqsW > maxNFreqsTotal - nNu
         nFreqsW = maxNFreqsTotal - nNu;
     end
     
-    [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsStage, nuGuessW, nuMaxCW);
+    [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
     
     if ~recon        
         bRemoved = true;
         while bRemoved
             [nuGuessW,bRemoved] = ConsolidateFreqs(nuGuessW,kNuConsolidate);
-            [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsStage, nuGuessW, nuMaxCW);
+            [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
+            nFreqsW = length(nuGuessW);
         end  
     end
     
-    [cosPartW, sinPartW] = EstimateContianedSinusoids(tsW, nuGuessW);
+    [cosPartW, sinPartW] = EstimateContainedSinusoids(tsW, nuGuessW);
     if nNu + nFreqsW < maxNFreqsTotal
         lastAbsDev = absDev;
         [tsW, absDev] = SubtractMultipleSinusoidsFromTS (tsW, cosPartW, sinPartW, nuGuessW);
@@ -211,9 +224,10 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
 end
 
 if recon
-    [nu] = FindBestFreqIxsForRecon(nu, cosPart, sinPart, nNu, kNuConsolidate);
+    [nu] = FindBestFreqIxsForRecon(nu, cosPart, sinPart, kNuConsolidate);
+    bracket = [];
 else
-    [nu, bracket] = BracketTheFreqIxs(nu, cosPart, sinPart, passNArr, nNu);
+    [nu, bracket] = BracketTheFreqIxs(nu, cosPart, sinPart, passNArr);
 end
 
 end
@@ -228,6 +242,26 @@ for k=0:N-1
     end
 end
  Xk = Xk./N;
+
+ % -fold the DFT:  
+ % The first value is DC and is not duplicated; 
+ % if the number of the rest of the values is even, then we can fold them,  
+ % if odd, then we can fold all but the middle value (which will be the
+ % highest frequency.
+ 
+ N = length(Xk);
+ if floor(N/2) ~= N/2
+     N = N + 1;
+ end
+ count = floor((N)/2); 
+ x = zeros(1,count);
+ x(1) = Xk(1);
+ for i = 2:count
+    j = 2*(count)+2 - i;
+    x(i) = Xk(i) + Xk(j)'; 
+ end
+ Xk = x;
+ 
 end
 %-------------------
 function [nu] = FindFreqsOfAmplitudePeaks(Xk, maxNAtOnce, nuMaxC)
@@ -239,14 +273,14 @@ kOfPeakThreshold = 0.005;
 maxAmpSqW = -(ones(1,maxNAtOnce));
 lastAmpSq = -1;
 prevLastAmpSq = -2;
-nu = 0;
-for mu = nuMaxC:-1:0
+nu = zeros(1,maxNAtOnce);
+for mu = nuMaxC:-1:1
     ampSq = abs(Xk(mu))^2;
     if ampSq < lastAmpSq && lastAmpSq > prevLastAmpSq
-        [nu, maxAmpSqW]=UpdateMaxAmpFreqs (nu, mu + 1, lastAmpSq, maxNAtOnce, maxAmpSqW);
+        [nu, maxAmpSqW]=UpdateMaxAmpFreqs (nu, mu, lastAmpSq, maxNAtOnce, maxAmpSqW);
     end
     prevLastAmpSq = lastAmpSq;
-    lastAmpSq = ampsq;
+    lastAmpSq = ampSq;
 end
 
 if lastAmpSq > prevLastAmpSq
@@ -259,7 +293,7 @@ if ampSqThreshold <= 0
     nPeaks = 0;
 else
     nPeaks = maxNAtOnce;
-    for i = 2:maxNatOnce
+    for i = 2:maxNAtOnce
         if maxAmpSqW(i) < ampSqThreshold
             nPeaks = i - 1;
             break
@@ -268,17 +302,18 @@ else
 end
 
 for i = 1:nPeaks
-    if nu(i) < 0 || nu(i) < nuMaxC
-       error('OFT.FindFreqsOfAmplitudePeaks nu(%d) (%f) is too high or negative',i,nu(i));        
+    if nu(i) < 0 || nu(i) > nuMaxC
+       %msg =  sprintf ('OFT>FindFreqsOfAmplitudePeaks nu(%d) (%f) is too high or negative',i,nu(i));
+       error('OFT>FindFreqsOfAmplitudePeaks nu(%d) (%f) is too high or negative',i,nu(i));        
     end
     if i < nPeaks
-       if maxAmpSqW(i) < maxAmpsqW(i+1)
-          error('OFT.FindFreqsOfAmplitudePeaks amplitudes not sorted')
+       if maxAmpSqW(i) < maxAmpSqW(i+1)
+          error('OFT>FindFreqsOfAmplitudePeaks amplitudes not sorted')
        end
     end
     for j = 1:i-1
         if nu(j) == nu(i)
-           error('OFT.FindFreqsOfAmplitudePeaks two nu values are the same')
+           error('OFT>FindFreqsOfAmplitudePeaks two nu values are the same')
         end
     end           
 end
@@ -320,8 +355,11 @@ function [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsStage, nuGuessW, 
 %        fRet                             ResidualForMultipleFreqs(latest nuGuessW), the best acheived so far.
 %- Finish when an iteration fails to reduce ResidualForMultipleFreqs by ktolMinMulti, relatively.
 
+% Constants
+ktolMinMulti = 0.00000005;
+
 nNu = length(nuGuessW);
-[absDev] = ResidualForMultipleFreqs(tsStage, nuGuessW, time);
+[absDev] = ResidualForMultipleFreqs(tsStage, nuGuessW);
 dirnSetW = zeros(nNu,nNu);
 nuGuessAtStOfIterW = zeros(1,nNu);
 for i = 1:nNu
@@ -346,7 +384,7 @@ while true
        lastAbsDev = absDev;
        [dirnW, nuGuessW, ~] = MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
        decrease = abs(lastAbsDev - absDev);
-       if decrease > biggestdecrease
+       if decrease > biggestDecrease
            biggestDecrease = decrease;
            dirnIxOfBiggestDecrease = i;
        end
@@ -372,7 +410,7 @@ while true
        nuGuessAtStOfIterW(i) = nuGuessW(i);
     end
     
-    [fExtrap] = ResidualForMultipleFreqs(tsStage, extrapolatedNuGuessW, time);
+    [fExtrap] = ResidualForMultipleFreqs(tsStage, extrapolatedNuGuessW);
     if fExtrap < absDevAtStOfIter
         u = (absDevAtStOfIter - absDev) - biggestDecrease;
         v = absDevAtStOfIter - fExtrap;
@@ -392,7 +430,7 @@ end
 function [absDev] = ResidualForMultipleFreqs(ts, nu)
 %- The m-function, i.e. the function to be minimized in searching for the nFreqsW sinusoids whose removal
 %  most reduces the absolute deviation of the time series.
-[cosPart, sinPart] = EstimateContianedSinusoids(ts, nu);
+[cosPart, sinPart] = EstimateContainedSinusoids(ts, nu);
 %fRet = AbsDevAfterSubtractMultipleSinusoidsFromTS(tsStage, nuGuessW, cosPart, sinPart);
 
 n = length(ts);
@@ -401,9 +439,9 @@ twoPiNuOn = nu * twoPiOn;
 
 absDev = 0;
 for tau = n-1:-1:0
-    x = ts(tau);
+    x = ts(tau+1);
     for i = 1:length(nu)
-        radians = twoPiNuOn * tau;
+        radians = twoPiNuOn(i) * tau;
         x = x - (cosPart(i) * cos(radians) + sinPart(i) * sin(radians));        
     end
     x = abs(x);
@@ -426,14 +464,14 @@ function [dirnW, nuGuessW, minSizeOfResidual] = MinimizeResidualAlongOneDirn (di
 
 [ax,bx,cx,foundMinimum,xMin,minSizeOfResidual] = BracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
 if ~foundMinimum
-   [xMin, minSizeOfResidual] = MinimizeFn1D(ax, bx, cx); 
+   [xMin, minSizeOfResidual] = MinimizeFn1D(ax, bx, cx, nuGuessW, dirnW, ts); 
 end
 
 for i = 1:length(nuGuessW)
-    dirnW = dirnW(i) * xMin;
-    nuGuessW(i) = nuGuess(i) + dirnW(i);
-    if nuGuessW(i) < 0; nuGuessW = 0; end
-    if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMacCW; end   
+    dirnW(i) = dirnW(i) * xMin;
+    nuGuessW(i) = nuGuessW(i) + dirnW(i);
+    if nuGuessW(i) < 0; nuGuessW(i) = 0; end
+     if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMacCW; end   
 end
 end
 %--------------------
@@ -459,6 +497,9 @@ kGold = 1.618034;   % the golden ratio
 kGoldLess1OP = 0.618034;
 kScale = 1000;
 kLimitTol = kScale * 0.0005;
+
+xMin = 0;       % xMin, fxMin is only valid if foundMinimum is true.
+fxMin = 0;
 
 foundMinimum = false;
 [lo, hi]=FindValidLimits1D(nuGuessW,dirnW,nuMaxCW);
@@ -511,7 +552,7 @@ while true
    if fc - fb > 1e-10 * abs(fc); return; end    % exit if b -> is uphill
    
    % exit is c is up against a limit
-   if cx == low || cx == hi
+   if cx == lo || cx == hi
        while abs(cx - bx) > kLimitTol * scalor
           u = 0.5 * (bx + cx);
           fu = ResidualAlongADirn(u, nuGuessW, dirnW, ts);
@@ -639,7 +680,7 @@ end
 fxMin = ResidualForMultipleFreqs(ts, nuTryW);
 end
 %---------------------
-function    [xMin, minSizeOfResidual] = MinimizeFn1D(ax, bx, cx)
+function    [xMin, minSizeOfResidual] = MinimizeFn1D(ax, bx, cx, nuGuessW, dirnW, ts)
 %- Brent's method for finding the minimum value of a function of one variable.
 %- Sets xMin to the value of x between ax and cx that mimimizes ResidualAlongADirn.
 %- Requires either ax < bx < cx or ax > bx > cx, and
@@ -693,7 +734,7 @@ for iter = 1:100    %limit the number of iterations to 100
       q = abs(q);
       eTemp = e;
       e = d;
-      if abs(p) >= abs(0.5 * q * eTemp) || p <= (q * (a - x)) || p >= (q * (b-x))
+      if abs(p) >= abs(0.5 * q * eTemp) | p <= (q * (a - x)) | p >= (q * (b-x))
           % take the golden step into the larger of the segments
           if x > xm
              e = a - x;
@@ -719,7 +760,7 @@ for iter = 1:100    %limit the number of iterations to 100
         end
         d = kCGold * e;
    end
-   
+   % make the move
    if abs(d) > tol1
       u = x + d;
    else
@@ -729,6 +770,7 @@ for iter = 1:100    %limit the number of iterations to 100
            u = x - abs(tol1);
        end
    end
+   [fu] = ResidualAlongADirn(u, nuGuessW, dirnW, ts);
    
    % decrease the size of the bracket
    if fu <= fx
@@ -749,13 +791,13 @@ for iter = 1:100    %limit the number of iterations to 100
        else
            b = u;
        end
-       if fu <= fw || w == x
+       if fu<=fw | w==x
           v = w;
           w = u;
           fv = fw;
           fw = fu;
        else
-           if fu <= fv || v == x
+           if fu <= fv | v == x
                v = u;
                fv = fu;
            end
@@ -819,7 +861,7 @@ for i = 1:newNNu
         end
     end
     if cosPart(jMax) > threshold; sinPart(jMax) = -1; end
-    cosPart(jmax) = -1;
+    cosPart(jMax) = -1;
 end
 
 newNNu = 0;
@@ -852,6 +894,7 @@ function [nu, bracket] = BracketTheFreqIxs(nu, cosPart, sinPart, passNArr)
 kRatioHi = 1 / 10;
 kRatioLo = 1 / 50;
 
+nNu = length(nu);
 ampSq = zeros(1,nNu);
 for i = 1:nNu
    c = cosPart(i);
@@ -923,6 +966,7 @@ while nNuStIx <= passesEnIx
       end
    end
    nNuInBracket = maxIx - nNuStIx + 1;  % bracked ends in greatest gap
+   nBrackets = nBrackets+1;
    bracket(nBrackets) = nNuInBracket;
    nNuStIx = nNuStIx + nNuInBracket;
 end

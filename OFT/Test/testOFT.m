@@ -40,23 +40,41 @@ classdef testOFT < matlab.unittest.TestCase
     
     methods (Test)
         
-        function testWaitBar (testCase)
-            handle=testCase.localFunctions(1);
-            waitBarOFT = handle{1};
-            
-            waitBarOFT(0,'Wait Bar Test',true);
-            pause(1)
-            waitBarOFT(.33,'are you waiting?',true)
-            pause(1)
-            waitBarOFT(.66,'what are you waiting for?',true)
-            pause(1)
-            waitBarOFT(1,'Passed Wait Bar Test!',true)
-            pause(1)
-            waitBarOFT(2,'you should not be seeing this',true)                      
-        end
-        
+%         function testWaitBar (testCase)
+%             handle=testCase.localFunctions(1);
+%             waitBarOFT = handle{1};
+%             
+%             waitBarOFT(0,'Wait Bar Test',true);
+%             pause(1)
+%             waitBarOFT(.33,'are you waiting?',true)
+%             pause(1)
+%             waitBarOFT(.66,'what are you waiting for?',true)
+%             pause(1)
+%             waitBarOFT(1,'Passed Wait Bar Test!',true)
+%             pause(1)
+%             waitBarOFT(2,'you should not be seeing this',true)                      
+%         end
+%         
         function testOFTCalc (testCase)
-            testOftOnce (testCase);
+            global Figure
+            
+            
+            % load the test data and print it
+            load('tsData.mat');
+            t = double(tsData.t);
+            t0 = t(1);
+            deltaT = mean(t(2:end)-t(1:end-1));
+            for tau=0:length(t)-1
+                regT(tau+1) = t0+deltaT*tau;
+            end
+            ts = double(tsData.g);
+            
+             Figure = figure;
+%             plot(regT,ts,'b')
+%             hold on
+%               
+            [actFreqs, actOFT, actFracErr] = OFT(ts, regT, 0.000001, true, 6, false); 
+            
         end
     end
     

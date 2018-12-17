@@ -34,6 +34,7 @@ if nRemoved > 0
                 end
                 nu(i) = nu(j);
             end
+            if j > nFreqs; break; end
         end
     end
     nFreqs = nFreqs - nRemoved;

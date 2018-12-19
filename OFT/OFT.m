@@ -1,5 +1,5 @@
-function [freqs, OFT, fracErr] = OFT (ts, time, relativeAbsDev, bDoRecon, maxNFreqsPerStage, bWaitBar)
-global kMaxNFreqsAtOnceOFT targetAbsDevW minChangeAbsDevW Figure
+function [freqs, MFT_OFT, fracErr] = OFT (ts, time, relativeAbsDev, bDoRecon, maxNFreqsPerStage, bWaitBar)
+global kMaxNFreqsAtOnceOFT targetAbsDevW minChangeAbsDevW Figure stageN kMaxNStages
 % Ported from VBA by Allen Goldstein, NIST from:
 % http://jonova.s3.amazonaws.com/cfa/climate.xlsm
 % written by: Dr David Evans
@@ -26,7 +26,7 @@ global kMaxNFreqsAtOnceOFT targetAbsDevW minChangeAbsDevW Figure
 % all the local subfunctions for the purpose of unit testing if the value
 % of the "nu" input (normally a double) is the string '-test'
 if ischar(ts) && strcmp(ts,'-test')
-    OFT = 0+0i;
+    MFT_OFT = 0+0i;
     fracErr = 0;
     freqs = localfunctions;
     return
@@ -36,8 +36,17 @@ end
 kMinChangeTargetAbsDevFraction = 0.0001;
 kMaxNFreqsAtOnceOFT = 10;               % OFT can only consider this many sinosiuds at one go.
 kMaxNFreqsPerStage = 3 * kMaxNFreqsAtOnceOFT / 2;
-kMaxNStages = 3;  % 3?, 4?                                       
+kMaxNStages = 2;  % 3?, 4? 
+kRemoveFraction = 1e-9;
 %===============================================================================================%
+
+% figure
+close all
+Figure = {};
+if bWaitBar
+    Figure = figure(1);
+end
+
 
 %n = length(ts);
 extent = time(end)-time(1);
@@ -50,7 +59,7 @@ minChangeAbsDevW = kMinChangeTargetAbsDevFraction * targetAbsDevW;
 % ts for the first stage
 tsStage = ts;
 
-% don't do too many frequecies per stage
+% do at least 10 frequecies for the first stage
 if maxNFreqsPerStage < 10
     maxNFreqsPerStage = 10;
 end
@@ -58,7 +67,7 @@ freqStage = [];
 nFreqs = 0;
 j = maxNFreqsPerStage;
 if j < kMaxNFreqsPerStage; j = kMaxNFreqsPerStage; end
-nuStage = zeros(1,j);
+%nuStage = zeros(1,j);
 
 % stage counter and progress bar
 stageN = 0;
@@ -67,36 +76,41 @@ waitBarOFT(stageN,'Starting First Stage',bWaitBar);
 
 while stageN < kMaxNStages
    stageN = stageN+1; 
-   waitBarOFT(stageN/kMaxNStages,sprintf('Stage %d',stageN),bWaitBar);  
    
-   [freqStage, MftStage] = OneStageOfOFT(tsStage, extent, bDoRecon, maxNFreqsPerStage, freqStage);  
-   if ishandle(Figure)
-      hold on
-      plot (ts - tsStage, 'r');
-      hold off
-   end
+   [freqStage, MftStage] = OneStageOfOFT(tsStage, extent, bDoRecon, maxNFreqsPerStage, freqStage, bWaitBar);  
 
     if stageN >=2
        ampBiggest = abs(MftStage(1));
        ampSmallest = abs(MftStage(length(freqStage)));
        ratio = ampSmallest / ampBiggest;
        % exit if spectrum of tsStage is "flat enough"
-       if ratio >=0.4; break; end
+       if ratio >= 0.4; break; end
     end
     
     % Append stage sinusoids to result
     j = nFreqs;
     nFreqs = nFreqs + length(freqStage);
+    nuStage = zeros(1,nFreqs);
     for i = 1:length(freqStage)
        j = j + 1;
        freqs(j) = freqStage(i);
        MFT_OFT(j) = MftStage(i);
-       nuStage(i) = freqStage(i) * extent;
+       nuStage(j) = freqStage(i) * extent;                           
     end
-    
+%      %-------------debug--------------
+%        amps = abs(MFT_OFT);
+%        fig=figure(2);
+%        plot(amps,'*')
+%        pause
+%        close(fig);
+%      %--------------------------------
+     
+     
     % Compute the TS for the next stage
     [tsStage, absDev] = SubtractMultipleSinusoidsFromTS (tsStage, real(MFT_OFT), imag(MFT_OFT), nuStage);
     if absDev < targetAbsDevW; break; end
+    
+    maxNFreqsPerStage = kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
            
 end
 waitBarOFT(100,'',bWaitBar);
@@ -104,10 +118,14 @@ waitBarOFT(100,'',bWaitBar);
 if stageN == 1
     [fracErr] = FractionalError(ts, extent, freqs, real(MFT_OFT), imag(MFT_OFT));
 else
-    [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, removefraction);
+    [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, kRemoveFraction);
     fracErr = absDev / absDevOfOriginalTS_W;
 end
 
+if ishandle(Figure) 
+    uiwait(msgbox('Done','done'))
+    close(Figure);
+end
 clearvars -global
 
 end
@@ -129,8 +147,8 @@ if bWaitBar
 end
 end
 %-------------
-function [freqStage, MftStage, fracErr] = OneStageOfOFT(tsStage, extent, bDoRecon, maxNFreqsPerStage, freqStage)
-global kMaxNFreqsAtOnceOFT
+function [freqStage, MftStage, fracErr] = OneStageOfOFT(tsStage, extent, bDoRecon, maxNFreqsPerStage, freqStage, bWaitBar)
+global kMaxNFreqsAtOnceOFT 
 
 % *** Reconnaisance part ***
 if bDoRecon
@@ -141,24 +159,24 @@ if bDoRecon
         maxNFreqsAtOnce = ceil(maxNFreqsPerStage/3);
     end
     
-    [freqStage, ~, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, true, freqStage);
+    [freqStage, ~] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, true, freqStage, bWaitBar);
 end
 
 % *** Main Part ***
-[freqStage, bracket, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsPerStage, false, freqStage);
+[freqStage, bracket] = FindFreqIxsInTS (tsStage, kMaxNFreqsAtOnceOFT, maxNFreqsPerStage, false, freqStage, bWaitBar);
 
 % *** Final Part ***
 dT = extent/length(tsStage);
 t = 0:dT:extent-dT;
-[freqStage, MftStage, fracErr] = MFT (tsStage, t, freqStage, bracket);
+[freqStage, MftStage, fracErr] = MFT (tsStage, t, freqStage/extent, bracket);
 end
 %----------------
-function [nu, bracket, tsStage] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu)
+function [nu, bracket] = FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu, bWaitBar)
 %- Finds best frequency indices for sinusoids in ts.
 %- Tries maxNFreqsAtOnce sinusoids at once, and finds up to maxNFreqsTotal.
 %- In:  nu[1..nNu]     Guesses for nu's in the initial iteration, if present (ie if nNu > 0).
 %- Out: nu[1..nNu]     Best estimates of frequency indices of sinusoids in ts.
-global targetAbsDevW minChangeAbsDevW Figure
+global targetAbsDevW minChangeAbsDevW Figure stageN kMaxNStages 
 kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
 tsW = tsStage;
 NW = length(tsW);
@@ -177,15 +195,9 @@ nNu = 0;
 passN = 0;
 while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev) > minChangeAbsDevW
     passN = passN + 1;
-    if ishandle(Figure)
-        plot (tsStage); 
-        hold on
-        plot (tsStage - tsW, 'r');
-        hold off
-        drawnow;
-    end
+      
     if nNuInitial > 0
-        nuGuessW=nu;
+        nuGuessW = nu;
         nFreqsW = nNuInitial;
         nNuInitial=0;
     else
@@ -195,6 +207,7 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
     end
     if nFreqsW > maxNFreqsTotal - nNu
         nFreqsW = maxNFreqsTotal - nNu;
+        nuGuessW = nuGuessW(1:nFreqsW);
     end
     
     [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
@@ -202,7 +215,7 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
     if ~recon        
         bRemoved = true;
         while bRemoved
-            [nuGuessW,bRemoved] = ConsolidateFreqs(nuGuessW,kNuConsolidate);
+            [nuGuessW, bRemoved] = ConsolidateFreqs(nuGuessW,kNuConsolidate);
             [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
             nFreqsW = length(nuGuessW);
         end  
@@ -220,7 +233,25 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
        cosPart(nNu) = cosPartW(i);
        sinPart(nNu) = sinPartW(i);
        passNArr(nNu) = passN;
-    end   
+    end
+    
+   % Wait bar
+   if recon; type = 'Recon'; else; type = 'Main'; end
+   waitBarOFT(stageN/kMaxNStages,sprintf('Stage %d, %s part, pass %d, found %d sinusoids',stageN, type, passN, nNu),bWaitBar);
+
+    
+    % plot the guess
+    if ishandle(Figure)
+        subplot(2,1,1)
+        plot (tsStage); 
+        hold on
+        plot (tsStage - tsW, 'r');
+        hold off
+        subplot(2,1,2)
+        plot(tsW)
+        drawnow;
+    end
+      
 end
 
 if recon
@@ -364,9 +395,9 @@ dirnSetW = zeros(nNu,nNu);
 nuGuessAtStOfIterW = zeros(1,nNu);
 for i = 1:nNu
    nuGuessAtStOfIterW(i) = nuGuessW(i);
-   for j = 1:nNu
-      dirnSetW(i,j)=0; 
-   end
+%    for j = 1:nNu
+%       dirnSetW(i,j)=0; 
+%    end
    dirnSetW(i,i)=1;
 end
 
@@ -912,65 +943,65 @@ nBrackets = 0;
 passesEnIx = 0;
 maxPassN = 0;
 while passesEnIx < nNu
-   maxPassN = maxPassN + 2; % Normally 2, maybe 3 or 4?. Need to set to 5 for ACRIM to get second low freq
-                            % high amp sinusoid consolidated with first one.
-   passesStIx = passesEnIx + 1;
-   for i = passesStIx:nNu
-      if passNArr(i) < maxPassN
-         passesEnIx = i;
-      else
-          break  
-      end
-   end
+    maxPassN = maxPassN + 2; % Normally 2, maybe 3 or 4?. Need to set to 5 for ACRIM to get second low freq
+    % high amp sinusoid consolidated with first one.
+    passesStIx = passesEnIx + 1;
+    for i = passesStIx:nNu
+        if passNArr(i) < maxPassN
+            passesEnIx = i;
+        else
+            break
+        end
+    end
+    
+    
+    % sort an index into ampsq
+    [ixArr] = SortArrayOfIndexesToDoubles(ixArr, ampSq, passesStIx, passesEnIx);
+    
+    % use the sorted index to order nu amd ampsq
+    tempN = zeros(1,passesEnIx-passesStIx);
+    tempA = zeros(1,passesEnIx-passesStIx);
+    for i = passesStIx:passesEnIx
+        tempN(i) = nu(i);
+        tempA(i) = -ampSq(i); % return to +ve
+    end
+    for i = passesStIx:passesEnIx
+        nu(i) = tempN(ixArr(i));
+        ampSq(i) = tempN(ixArr(i));
+    end
+    
+    % Loop by bracket (within a passN-group)
+    nNuStIx = passesStIx;
+    while nNuStIx <= passesEnIx
+        thresholdHi = ampSq(nNuStIx) * kRatioHi;
+        thresholdLo = ampSq(nNuStIx) * kRatioLo;
+        
+        for i = nNuStIx:passesEnIx
+            if ampSq(i) < thresholdHi; break; end
+            hiIx = i;
+        end
+        
+        for i = hiIx:passesEnIx
+            if ampSq(i) < thresholdLo; break; end
+            loIx = i;
+        end
+        
+        maxGap = -1;
+        maxIx = passesEnIx;
+        if loIx < nNu; enIx = loIx; else; enIx = loIx - 1; end
+        for i = hiIx:enIx
+            g = ampSq(i) / ampSq(i+1); %g >=1
+            if maxGap < g
+                maxGap = g;
+                maxIx = i;
+            end
+        end
+        nNuInBracket = maxIx - nNuStIx + 1;  % bracked ends in greatest gap
+        nBrackets = nBrackets+1;
+        bracket(nBrackets) = nNuInBracket;
+        nNuStIx = nNuStIx + nNuInBracket;
+    end
 end
-
-% sort an index into ampsq
-[ixArr] = SortArrayOfIndexesToDoubles(ixArr, ampSq, passesStIx, passesEnIx);
-
-% use the sorted index to order nu amd ampsq
-tempN = zeros(1,passesEnIx-passesStIx);
-tempA = zeros(1,passesEnIx-passesStIx);
-for i = passesStIx:passesEnIx
-   tempN(i) = nu(i);
-   tempA(i) = -ampSq(i); % return to +ve
-end
-for i = passesStIx:passesEnIx
-   nu(i) = tempN(ixArr(i));
-   ampSq(i) = tempN(ixArr(i));
-end
-
-% Loop by bracket (within a passN-group)
-nNuStIx = passesStIx;
-while nNuStIx <= passesEnIx
-   thresholdHi = ampSq(nNuStIx) * kRatioHi;
-   thresholdLo = ampSq(nNuStIx) * kRatioLo;
-   
-   for i = nNuStIx:passesEnIx
-      if ampSq(i) < thresholdHi; break; end
-      hiIx = i;
-   end
-   
-   for i = hiIx:passesEnIx
-      if ampSq(i) < thresholdLo; break; end
-      loIx = i;
-   end
-   
-   maxGap = -1;
-   maxIx = passesEnIx;
-   if loIx < nNu; enIx = loIx; else; enIx = loIx - 1; end
-   for i = hiIx:enIx
-      g = ampSq(i) / ampSq(i+1); %g >=1
-      if maxGap < g
-         maxGap = g;
-         maxIx = i;
-      end
-   end
-   nNuInBracket = maxIx - nNuStIx + 1;  % bracked ends in greatest gap
-   nBrackets = nBrackets+1;
-   bracket(nBrackets) = nNuInBracket;
-   nNuStIx = nNuStIx + nNuInBracket;
-end
-   
 end
 
 

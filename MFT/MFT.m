@@ -40,8 +40,8 @@ if ischar(g) && strcmp(g,'-test')
     return
 end
 %===============================================================================================%
-
-
+% Constants
+kRemoveFraction = 0.00000001;
 %-------------------------------------------------------------------------------------------------------
 kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
 % Setting the consolidation distance:
@@ -60,6 +60,7 @@ Fs = 1/mean(diff(t));   % time series sample rate
 E = t(end)-t0 + 1/Fs;   % Extent (the length of the series plus one/half sample period before and after)
 
 nu_MFT = f * E;
+tsV = g;
 
 
 % The Optimal Fourier Transform process may send the MFT some freqs that are converging.  
@@ -98,13 +99,16 @@ while nFreqsDone < length(nu_MFT)
         nuV(i) = nu_MFT(nFreqsDone + i);
     end
     
-    [cosPart, sinPart] = EstimateContainedSinusoids (g,nuV);
+    [cosPart, sinPart] = EstimateContainedSinusoids (tsV,nuV);
+%    [cosPart, sinPart] = EstimateContainedSinusoids (g,nuV);
     
     if nFreqsDone + nNuV < length(nu_MFT)
-        [TsV, absDev] = SubractMultipleSinusoidsFromTS(g, cosPart, sinPart, nuV);
+        [tsV, absDev] = SubtractMultipleSinusoidsFromTS(tsV, cosPart, sinPart, nuV);
+%        [tsV, absDev] = SubtractMultipleSinusoidsFromTS(g, cosPart, sinPart, nuV);
+
     end
     
-    freqs = zeros(1,nNuV);
+    %freqs = zeros(1,nNuV);
     for i = 1:nNuV
         nFreqsDone = nFreqsDone + 1;
         freqs(nFreqsDone) = nuV(i) / E;
@@ -116,53 +120,13 @@ if isobject(flags)
     flags=flags.FlagHighAmplitudeSinusoids(g, length(ts), f, E, cosPart, sinPart);
 end
 
+[freqs, MFT] = SortSinusoidsByAmplitude (freqs, MFT, kRemoveFraction);
+
 [fracErr] = FractionalError (g, E, f, cosPart, sinPart);
 
 end
 
 %============================== LOCAL FUNCTIONS ==========================%
-% Moved to its own function file
-% function [nu_MFT] = ConsolidateFreqs(nu_MFT,kNuConsolidate)
-% % Consolidates converging frequencies (those with indices very close together)
-% nu = nu_MFT;
-% nRemoved = 0;
-% nFreqs = length(nu);
-% 
-% for i = 1:nFreqs 
-%     if nu(i) >= 0
-%         for j = i+1:nFreqs
-%             if abs(nu(i)-nu(j)) < kNuConsolidate
-%                 nu(i) = (nu(i) + nu(j)) * 0.5;
-%                 nu(j) = -1;
-%                 nRemoved = nRemoved +1;
-%             end
-%         end
-%     end
-% end
-% 
-% if nRemoved > 0
-%     j = 0;
-%     for i = 1:nFreqs-nRemoved
-%         j = j+1;
-%         if nu(j) >= 0
-%             if i ~= j
-%                 nu(i) = nu(j);
-%             end
-%         else
-%             while nu(j) < 0
-%                 j = j+1;
-%                 if j > nFreqs
-%                     break
-%                 end
-%                 nu(i) = nu(j);
-%             end
-%         end
-%     end
-%     nFreqs = nFreqs - nRemoved;
-% end
-% 
-% nu_MFT = nu(1:nFreqs);
-% end
 
 function [nu_MFT] = ConsolidateFreqsByBracket(nu_MFT, Bracket, kNuConsolidate)
 % Consolidates converging frequencies but only within the same bracket

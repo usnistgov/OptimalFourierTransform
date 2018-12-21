@@ -1,4 +1,4 @@
-function [fracErr] = FractionalError (ts, extent, freqs, cosPart, sinPart)
+function [fracErr] = FractionalError (ts, extent, freqs, MFT)
 %- Returns (the absolute deviation of the ts synthesizd from cosPart and sinPart) divided by
 %  (the absolute deviation of ts).
 %- Provides a figure of merit for how good a transform is. The smaller the better, less than 1% is good.
@@ -7,6 +7,8 @@ function [fracErr] = FractionalError (ts, extent, freqs, cosPart, sinPart)
 %       cosPart[1..nFreqs]
 %       sinPart[1..nFreqs]
 
+cosPart = real(MFT);
+sinPart = imag(MFT);
 n = length(ts);
 twoPiExtentON = 2 * pi * extent / n;
 absDevOfTS = 0;

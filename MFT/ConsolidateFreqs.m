@@ -22,6 +22,13 @@ if nRemoved > 0
     j = 0;
     for i = 1:nFreqs-nRemoved
         j = j+1;
+        
+        %debugging code -----
+        if j > length(nu)
+            dbstop
+        end
+        %-------------------       
+        
         if nu(j) >= 0
             if i ~= j
                 nu(i) = nu(j);

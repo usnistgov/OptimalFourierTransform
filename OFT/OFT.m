@@ -65,9 +65,6 @@ if maxNFreqsPerStage < 10
 end
 freqStage = [];
 nFreqs = 0;
-j = maxNFreqsPerStage;
-if j < kMaxNFreqsPerStage; j = kMaxNFreqsPerStage; end
-%nuStage = zeros(1,j);
 
 % stage counter and progress bar
 stageN = 0;
@@ -116,7 +113,7 @@ end
 waitBarOFT(100,'',bWaitBar);
 
 if stageN == 1
-    [fracErr] = FractionalError(ts, extent, freqs, real(MFT_OFT), imag(MFT_OFT));
+    [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
 else
     [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, kRemoveFraction);
     fracErr = absDev / absDevOfOriginalTS_W;
@@ -228,6 +225,9 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
     end
     
     for i = 1:nFreqsW
+       if nuGuessW(i) < 0
+           error('nuGuessW < 0')
+       end
        nNu = nNu +1;
        nu(nNu) = nuGuessW(i);
        cosPart(nNu) = cosPartW(i);
@@ -247,7 +247,9 @@ while nNu < maxNFreqsTotal && absDev > targetAbsDevW && abs(lastAbsDev - absDev)
         hold on
         plot (tsStage - tsW, 'r');
         hold off
+        title('Time Series and Guess')
         subplot(2,1,2)
+        title('Residual')
         plot(tsW)
         drawnow;
     end
@@ -282,7 +284,7 @@ end
  
  N = length(Xk);
  if floor(N/2) ~= N/2
-     N = N + 1;
+     N = N - 1;
  end
  count = floor((N)/2); 
  x = zeros(1,count);
@@ -331,6 +333,8 @@ else
         end
     end   
 end
+
+nu = nu(1:nPeaks);  % remove any nu values that are not peaks
 
 for i = 1:nPeaks
     if nu(i) < 0 || nu(i) > nuMaxC
@@ -854,6 +858,8 @@ kOfPeakThreshold = 0.005;
 %- Out: nu     [1..nNu]  nNu = min(nNu after frequency consolidations, kMaxNFreqsAtOnceOFT)
 nNu = length(nu);
 newNNu = nNu;
+
+% Consolidate frequency indicies that are close together
 for i = 1:nNu
    if nu(i) >= 0
       for j = i+1:nNu
@@ -871,6 +877,8 @@ end
 
 if newNNu > kMaxNFreqsAtOnceOFT; newNNu=kMaxNFreqsAtOnceOFT; end
 
+% compute the amplitude squares into cosPart (sinPart and cosPart are
+% destroyed by this)
 maxAmpSq = -1;
 for i = 1:nNu
    c = cosPart(i);
@@ -883,6 +891,9 @@ end
 
 threshold = kOfPeakThreshold * maxAmpSq;
 
+
+% Mark the amplitude squares that exceed threshold with a negative sinPart
+% Mark the cosParts with -1 once it has been checked
 for i = 1:newNNu
     maxAmpSq = -1;
     for j = 1:nNu
@@ -896,13 +907,26 @@ for i = 1:newNNu
 end
 
 newNNu = 0;
+
+
 for i = 1:nNu
    if sinPart(i) == -1
       newNNu = newNNu + 1;
       if newNNu < i; nu(newNNu) = nu(i); end
    end
 end
-% nnU = newNNu;     % not returned
+
+% remove any nu = -1
+i = 1;
+%for i = 1:length(nu)
+while i <= length(nu)
+    if nu(i) == -1
+        nu(i) = [];
+    else
+        i = i+1;
+    end
+end
+
 end
 %------------------
 function [nu, bracket] = BracketTheFreqIxs(nu, cosPart, sinPart, passNArr)
@@ -1000,6 +1024,10 @@ while passesEnIx < nNu
         nBrackets = nBrackets+1;
         bracket(nBrackets) = nNuInBracket;
         nNuStIx = nNuStIx + nNuInBracket;
+        if nBrackets > 10
+            dbstop
+            error('bracket loop > 10 iterations')
+        end
     end
 end
 end

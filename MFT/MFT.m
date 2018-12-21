@@ -1,5 +1,6 @@
 function [freqs, MFT, fracErr] = MFT(g, t, f, bracket)
 global flags
+% dbstop if error     % TODO comment this out in production code
 % Ported from VBA by Allen Goldstein, NIST from:
 % http://jonova.s3.amazonaws.com/cfa/climate.xlsm
 % written by: Dr David Evans
@@ -68,16 +69,15 @@ tsV = g;
 if length(bracket) == 0 || any(bracket) < 0
     [nu_MFT,~] = ConsolidateFreqs(nu_MFT,kNuConsolidate);
 else
-    [nu_MFT] = ConsolidateFreqsByBracket (nu_MFT, bracket,kNuConsolidate);
+    [nu_MFT, bracket] = ConsolidateFreqsByBracket (nu_MFT, bracket,kNuConsolidate);
 end
 
 kMaxNSAtOnce = length(nu_MFT);
-nuV = zeros(1,kMaxNSAtOnce);
+%nuV = zeros(1,kMaxNSAtOnce);
 nFreqsDone = 0;
 bracketIx = 0;
 nLeftThisBracket = 0;
 while nFreqsDone < length(nu_MFT)
-  
     nNuV = kMaxNSAtOnce;
     if ~isempty(bracket)        % Do all bracketing here
         if nLeftThisBracket == 0
@@ -95,6 +95,8 @@ while nFreqsDone < length(nu_MFT)
             end
         end
     end
+    
+    nuV = zeros(1,bracket(bracketIx));
     for i=1:nNuV
         nuV(i) = nu_MFT(nFreqsDone + i);
     end
@@ -104,8 +106,6 @@ while nFreqsDone < length(nu_MFT)
     
     if nFreqsDone + nNuV < length(nu_MFT)
         [tsV, absDev] = SubtractMultipleSinusoidsFromTS(tsV, cosPart, sinPart, nuV);
-%        [tsV, absDev] = SubtractMultipleSinusoidsFromTS(g, cosPart, sinPart, nuV);
-
     end
     
     %freqs = zeros(1,nNuV);
@@ -115,31 +115,31 @@ while nFreqsDone < length(nu_MFT)
         MFT(nFreqsDone) = complex(cosPart(i),sinPart(i));
     end
 end
-nFreqs = nFreqsDone;
+%nFreqs = nFreqsDone;
 if isobject(flags)
     flags=flags.FlagHighAmplitudeSinusoids(g, length(ts), f, E, cosPart, sinPart);
 end
 
 [freqs, MFT] = SortSinusoidsByAmplitude (freqs, MFT, kRemoveFraction);
 
-[fracErr] = FractionalError (g, E, f, cosPart, sinPart);
+[fracErr] = FractionalError (g, E, freqs, MFT);
 
 end
 
 %============================== LOCAL FUNCTIONS ==========================%
 
-function [nu_MFT] = ConsolidateFreqsByBracket(nu_MFT, Bracket, kNuConsolidate)
+function [nu_MFT, bracket] = ConsolidateFreqsByBracket(nu_MFT, bracket, kNuConsolidate)
 % Consolidates converging frequencies but only within the same bracket
 
 nu = nu_MFT;
-nBrackets = length(Bracket);
+nBrackets = length(bracket);
 readBase = 0;
 writeBase = 0;
 Consolidated = false;
 
 for bracketIx = 1:nBrackets
-    nTemp = Bracket(bracketIx);
-    temp = zeros(1:nTemp);
+    nTemp = bracket(bracketIx);
+    temp = zeros(1,nTemp);
     
     for i = 1:nTemp
         temp(i) = nu(readBase + i);     % Copy the freqs in the bracket to temp
@@ -152,6 +152,7 @@ for bracketIx = 1:nBrackets
             nu(writeBase+i) = temp(i);
         end
         Consolidated = true;
+        bracket(bracketIx) = length(temp);
     else
         if Consolidated
             for i = 1:length(temp)

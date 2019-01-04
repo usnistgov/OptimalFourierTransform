@@ -49,7 +49,7 @@ end
 
 
 %n = length(ts);
-extent = time(end)-time(1);
+extent = time(end)+mean(diff(time))-time(1);
 % Initialize absolute deviations
 absDevOfOriginalTS_W = AbsDevOfTS(ts,length(ts));
 targetAbsDevW = relativeAbsDev * absDevOfOriginalTS_W;
@@ -177,7 +177,7 @@ global targetAbsDevW minChangeAbsDevW Figure stageN kMaxNStages
 kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
 tsW = tsStage;
 NW = length(tsW);
-nuMaxCW = floor(NW/2);
+nuMaxCW = floor(NW/2)+1;
 %cosPart_DFT=zeros(1,nuMaxCW);
 %sinPart_DFT=zeros(1,nuMaxCW);
 cosPart = zeros(1,maxNFreqsTotal);
@@ -286,11 +286,11 @@ end
  if floor(N/2) ~= N/2
      N = N - 1;
  end
- count = floor((N)/2); 
+ count = floor((N)/2)+1; 
  x = zeros(1,count);
  x(1) = Xk(1);
  for i = 2:count
-    j = 2*(count)+2 - i;
+    j = 2*(count) - i;
     x(i) = Xk(i) + Xk(j)'; 
  end
  Xk = x;

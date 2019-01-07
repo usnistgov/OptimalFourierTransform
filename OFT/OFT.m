@@ -177,9 +177,11 @@ global targetAbsDevW minChangeAbsDevW Figure stageN kMaxNStages
 kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
 tsW = tsStage;
 NW = length(tsW);
-nuMaxCW = floor(NW/2)+1;
-%cosPart_DFT=zeros(1,nuMaxCW);
-%sinPart_DFT=zeros(1,nuMaxCW);
+
+even = 1;
+if NW/2 ~= floor(NW/2); even = 0; end;
+nuMaxCW = ceil(NW/2) +  even;
+
 cosPart = zeros(1,maxNFreqsTotal);
 sinPart = zeros(1,maxNFreqsTotal);
 passNArr = zeros(1,maxNFreqsTotal);
@@ -283,14 +285,18 @@ end
  % highest frequency.
  
  N = length(Xk);
- if floor(N/2) ~= N/2
-     N = N - 1;
+ count = floor((N)/2) + 1;
+ odd = 0;
+ if floor(N/2) ~= N/2   % odd
+     %N = N - 1;
+     count = ceil(N/2);
+     odd = 1;
  end
- count = floor((N)/2)+1; 
+ %count = floor((N)/2) + even; 
  x = zeros(1,count);
  x(1) = Xk(1);
  for i = 2:count
-    j = 2*(count) - i;
+    j = 2*(count) + odd - i;
     x(i) = Xk(i) + Xk(j)'; 
  end
  Xk = x;

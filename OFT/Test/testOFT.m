@@ -38,51 +38,132 @@ classdef testOFT < matlab.unittest.TestCase
         end
     end
     
-    methods (Test)
-        
-%         function testWaitBar (testCase)
-%             handle=testCase.localFunctions(1);
-%             waitBarOFT = handle{1};
-%             
-%             waitBarOFT(0,'Wait Bar Test',true);
-%             pause(1)
-%             waitBarOFT(.33,'are you waiting?',true)
-%             pause(1)
-%             waitBarOFT(.66,'what are you waiting for?',true)
-%             pause(1)
-%             waitBarOFT(1,'Passed Wait Bar Test!',true)
-%             pause(1)
-%             waitBarOFT(2,'you should not be seeing this',true)                      
-%         end
-        
-%         function testOFTCalc_1 (testCase)
-%         % This loads and analyses the same time series data used in the 
-%         % original EXCEL "climate.xlsm by David Evans.
-%                        
-%             load('tsData.mat');  % load the test data
-%             t = double(tsData.t);
-%             t0 = t(1);
-%             deltaT = mean(t(2:end)-t(1:end-1));
-%             for tau=0:length(t)-1
-%                 regT(tau+1) = t0+deltaT*tau;
-%             end
-%             ts = double(tsData.g);
-%                           
-%             [actFreqs, actOFT, actFracErr] = OFT(ts, regT, 0.000001, true, 6, true); 
-%             [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
-%             
-%             close all
-%             figure(2)
-%             subplot(2,1,1)
-%             hold on
-%             plot (t,ts,'b')
-%             plot(t,act_TS,'r')
-%             hold off
-%             subplot (2,1,2)
-%             ts_diff = act_TS' - ts;
-%             plot (t, ts_diff,'g')
-%             pause
-%             close all
+    methods (Test)   
+        function regressionTests (testCase)
+            testWaitBar (testCase)
+            testOFTCalc_1 (testcase)
+            testNyquist (testCase)
+            testNearDC (testCase)
+            testMultipleOFT (testCase)
+            testLab (testCase)
+        end
+    end
+%--------------------------------------------------------------------------                
+    methods (Access = private)
+    % these private methods are called by the regression tests
+    
+        function testWaitBar (testCase)
+            handle=testCase.localFunctions(1);
+            waitBarOFT = handle{1};
+            
+            waitBarOFT(0,'Wait Bar Test',true);
+            pause(1)
+            waitBarOFT(.33,'1/3 done',true)
+            pause(1)
+            waitBarOFT(.66,'2/3 done',true)
+            pause(1)
+            waitBarOFT(1,'Passed Wait Bar Test!',true)
+            pause(1)
+            waitBarOFT(2,'you should not be seeing this',true)                      
+        end
+            
+    
+      
+        function [ts_OFT] = SynthesizeOFT(testCase, Freqs, t, actOFT)
+           n = length(t);
+           extent = t(end)+mean(diff(t))-t(1);
+           twoPiExtentON = 2* pi * extent / n;
+           ts_OFT = zeros(1,length(t));
+           
+           for i = 1:length(Freqs)
+              mag = abs(actOFT(i));
+              ang = angle(actOFT(i));
+              %ang = mod(angle(actOFT(i)),pi);
+              twoPiTime = zeros(1,n);
+              for tau = n-1:-1:0
+                  twoPiTime(tau+1) = twoPiExtentON * tau;
+              end
+              radians = twoPiTime * Freqs(i);
+              ts_OFT = ts_OFT + mag * cos(radians-ang);              
+           end
+        end
+    end
+    
+    
+    methods (Access=private)
+    % these private methods are groups of artificial time series that are
+    % called by the regression tests
+    
+        function testOftOnce (testCase)
+           % This runs one iteration of test ArtificialTS parameters for
+           % each test run have been set up by TestMethodSetup (automatically 
+           % set by matlab before each test) and by testMultipleOFT
+           % TestMultipleContainedSinusoids.            
+            disp(testCase.TS.Name)
+            testCase.TS = testCase.TS.makeTime;
+            testCase.TS = testCase.TS.makeTS;
+            
+%             Figure = figure;
+%             plot(testCase.TS.time,testCase.TS.Ts)
+%             title(testCase.TS.Freqs);
+%             pause;
+%             close(Figure);
+            
+             t = testCase.TS.time;
+            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, true, 5, true);  % recon, plot progress plot p
+            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, false, 5, true);  % no recon, plot progress plot p
+            [actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, true, 5, false); % recon, no plot progress plot p
+            [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
+            orig_TS = testCase.TS.Ts;
+
+            
+            close all
+            figure(2)
+            s(1)=subplot(2,1,1);
+            hold on
+            plot (t,orig_TS,'b')
+            plot(t,act_TS,'r')
+            hold off
+
+            s(2)=subplot (2,1,2);
+            ts_diff = act_TS - orig_TS;
+
+            plot (t, ts_diff,'g')
+            title(s(1),testCase.TS.Name);
+            title(s(2),'Residual');
+            pause
+            close all
+        end
+      
+    
+        function testOFTCalc_1 (testCase)
+        % This loads and analyses the same time series data used in the 
+        % original EXCEL "climate.xlsm by David Evans.
+                       
+            load('tsData.mat');  % load the test data
+            t = double(tsData.t);
+            t0 = t(1);
+            deltaT = mean(t(2:end)-t(1:end-1));
+            for tau=0:length(t)-1
+                regT(tau+1) = t0+deltaT*tau;
+            end
+            ts = double(tsData.g);
+                          
+            [actFreqs, actOFT, actFracErr] = OFT(ts, regT, 0.000001, true, 6, true); 
+            [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
+            
+            close all
+            figure(2)
+            subplot(2,1,1)
+            hold on
+            plot (t,ts,'b')
+            plot(t,act_TS,'r')
+            hold off
+            subplot (2,1,2)
+            ts_diff = act_TS' - ts;
+            plot (t, ts_diff,'g')
+            pause
+            close all
 %             
 % % TODO:  set up some expected values to verify                        
 % %           actAmp = abs(actOFT)                        
@@ -91,60 +172,80 @@ classdef testOFT < matlab.unittest.TestCase
 % %               if actAngle(i) < 0; actAngle(i) = 360 + actAngle(i); end
 % %           end
 %                      
-%         end
+        end
          
-        function testMultipleOFT (testCase)
-            kNuEgdeWidth = 0.00005;   
+        function testNyquist (testCase)
+            kNuEgdeWidth = 0.00005;
+            
+            testCase.TS.Name = 'Test Nyquist (600)';
+            testCase.TS.nSamples = uint32(600);
+            testCase.TS.Freqs = [0.5 * testCase.TS.nSamples/testCase.TS.Extent];
+            testOftOnce (testCase);
+            
+            testCase.TS.Name = 'Test Nyquist - kNuEgdeWidth - 1e-7 (600)';            
+            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth - 1e-7) / testCase.TS.Extent];
+            testOftOnce (testCase);
+
+            testCase.TS.Name = 'Test Nyquist - kNuEgdeWidth + 1e-7 (600)';            
+            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth + 1e-7) / testCase.TS.Extent];
+            testOftOnce (testCase);
+
+            % odd samples near nyquist.  
+            testCase.TS.Name = 'Test Nyquist (539)';            
+            testCase.TS.nSamples = uint32(7 * 7 * 11);  % odd
+            testCase.TS.Freqs = [0.5 * testCase.TS.nSamples/testCase.TS.Extent];
+            testOftOnce (testCase);                            
+            
+        end
+        
+        function testNearDC (testCase)
+            kNuEgdeWidth = 0.00005;            
+            testCase.TS.nSamples = uint32(600);    
+            
+            testCase.TS.Name = 'Test DC  (600)';            
+            testCase.TS.Freqs = [0];
+            testOftOnce (testCase);            
+            
+            testCase.TS.Name = 'Test DC + 1e-7 (600)';            
+            testCase.TS.Freqs = [kNuEgdeWidth + 1e-7];
+            testOftOnce (testCase);
+
+            testCase.TS.Name = 'Test DC- 1e-7 (600)';            
+            testCase.TS.Freqs = [kNuEgdeWidth - 1e-7];
+            testOftOnce (testCase);
+            
+            testCase.TS.nSamples = uint32(7 * 7 * 11);  % odd  
+            testCase.TS.Name = 'Test DC  (539)';            
+            testCase.TS.Freqs = [0];
+            testOftOnce (testCase);                        
+            
+            testCase.TS.Name = 'Test DC + 1e-7 (539)';            
+            testCase.TS.Freqs = [kNuEgdeWidth + 1e-7];
+            testOftOnce (testCase);
+
+            testCase.TS.Name = 'Test DC - 1e-7 (539)';            
+            testCase.TS.Freqs = [kNuEgdeWidth - 1e-7];
+            testOftOnce (testCase);
+            
+                        
+        end
+
+    
+       function testMultipleOFT (testCase)
+            kNuEgdeWidth = 0.00005;  
+            testCase.TS.nSamples = uint32(600);                
             
             testCase.TS.Name = 'Test #1-1 (1/300)';
             testCase.TS.Freqs = [1/300];
             testOftOnce (testCase);
             
-            testCase.TS.Name = 'Test #1-2 (0)';                     
-            testCase.TS.Freqs = [0];
-            testOftOnce (testCase);            
-            
-            testCase.TS.Name = 'Test #1-3 (Nyquist)';            
-            testCase.TS.Freqs = [0.5 * testCase.TS.nSamples/testCase.TS.Extent];
-            testOftOnce (testCase);           
-
-            testCase.TS.Name = 'Test #1-4 (Nyquist - kNuEgdeWidth - 1e-7)';            
-            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth - 1e-7) / testCase.TS.Extent];
-            testOftOnce (testCase);
-
-            testCase.TS.Name = 'Test #1-5 (Nyquist - kNuEgdeWidth + 1e-7)';            
-            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth + 1e-7) / testCase.TS.Extent];
-            testOftOnce (testCase);
-
-            testCase.TS.Name = 'Test #1-6 (Nyquist + 1e-7)';            
-            testCase.TS.Freqs = [kNuEgdeWidth + 1e-7];
-            testOftOnce (testCase);
-
-            testCase.TS.Name = 'Test #1-7 (Nyquist - 1e-7)';            
-            testCase.TS.Freqs = [kNuEgdeWidth - 1e-7];
-            testOftOnce (testCase);
-
-            % an odd number of samples
+             % an odd number of samples
             testCase.TS.nSamples = uint32(7 * 7 * 11);  % odd
 
-            testCase.TS.Name = 'Test #1-8 (1/300) (odd)';            
+            testCase.TS.Name = 'Test #1-2 (1/300) (odd)';            
             testCase.TS.Freqs = [1/300];
             testOftOnce (testCase);                       
              
-            % odd samples near nyquist.  Still has a hard time but looks
-            % different than with even samples.
-            testCase.TS.Name = 'Test #1-9 (Nyquist) (odd)';            
-            testCase.TS.Freqs = [0.5 * testCase.TS.nSamples/testCase.TS.Extent];
-            testOftOnce (testCase);                       
-
-            testCase.TS.Name = 'Test #1-10 (Nyquist - kNuEgdeWidth - 1e-7) (odd)';            
-            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth - 1e-7) / testCase.TS.Extent];
-            testOftOnce (testCase);
-
-            testCase.TS.Name = 'Test #1-11 (Nyquist - kNuEgdeWidth + 1e-7) (odd)';            
-            testCase.TS.Freqs = [(0.5 * testCase.TS.nSamples - kNuEgdeWidth + 1e-7) / testCase.TS.Extent];
-            testOftOnce (testCase);        
-            
             % Tests on 2 Sinusoids
             testCase.TS.Name = 'Test #2-1 (1/300(67), 1/49(27)) (odd)';            
             testCase.TS.Freqs = [1/300, 1/49];
@@ -271,77 +372,25 @@ classdef testOFT < matlab.unittest.TestCase
            testCase.TS.Phases = [45,0,17,0,217]*pi/180;
            testOftOnce (testCase);
                                               
-        end
-        
-        
-        
-    end
+       end    
     
-    methods (Access=private)
-
-    end
-            
-    methods (Access = private)
-        
-        function testOftOnce (testCase)
-           % This runs one iteration of test ArtificialTS parameters for
-           % each test run have been set up by TestMethodSetup (automatically 
-           % set by matlab before each test) and by testMultipleOFT
-           % TestMultipleContainedSinusoids.            
-            disp(testCase.TS.Name)
-            testCase.TS = testCase.TS.makeTime;
-            testCase.TS = testCase.TS.makeTS;
-            
-%             Figure = figure;
-%             plot(testCase.TS.time,testCase.TS.Ts)
-%             title(testCase.TS.Freqs);
-%             pause;
-%             close(Figure);
-            
-             t = testCase.TS.time;
-            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, true, 5, true);  % recon, plot progress plot p
-            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, false, 5, true);  % no recon, plot progress plot p
-            [actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .1, true, 5, false); % recon, no plot progress plot p
-            [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
-            orig_TS = testCase.TS.Ts;
-
-            
-            close all
-            figure(2)
-            s(1)=subplot(2,1,1);
-            hold on
-            plot (t,orig_TS,'b')
-            plot(t,act_TS,'r')
-            hold off
-
-            s(2)=subplot (2,1,2);
-            ts_diff = act_TS - orig_TS;
-
-            plot (t, ts_diff,'g')
-            title(s(1),testCase.TS.Name);
-            title(s(2),'Residual');
-            pause
-            close all
-        end
-        
-        function [ts_OFT] = SynthesizeOFT(testCase, Freqs, t, actOFT)
-           n = length(t);
-           extent = t(end)+mean(diff(t))-t(1);
-           twoPiExtentON = 2* pi * extent / n;
-           ts_OFT = zeros(1,length(t));
+       function testLab (testCase)
+           % set up the artificial time series
+           testCase.TS.T0 = 0;
+           testCase.TS.Extent = 2000;
+           testCase.TS.nSamples = uint32(300);
+           testCase.TS.Freqs = [0, 0.001238, 0.00165, 0.002475, 0.0033, 0.004808, 0.009901, 0.020408, 0.043478, 0.071429];
+           testCase.TS.Amps = [0, 0, 0, 0, 0, 9, 0, 0, 0, 0];
+           testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
            
-           for i = 1:length(Freqs)
-              mag = abs(actOFT(i));
-              ang = angle(actOFT(i));
-              %ang = mod(angle(actOFT(i)),pi);
-              twoPiTime = zeros(1,n);
-              for tau = n-1:-1:0
-                  twoPiTime(tau+1) = twoPiExtentON * tau;
-              end
-              radians = twoPiTime * Freqs(i);
-              ts_OFT = ts_OFT + mag * cos(radians-ang);              
-           end
-        end
+           testCase.TS.Name = 'One Sinusoid';
+           %testOftOnce (testCase);
+           
+           testCase.TS.Name = 'Two Sinusoids';           
+           testCase.TS.Amps(5) = 8;
+           testOftOnce (testCase);
+           
+           
+       end
     end
-    
 end

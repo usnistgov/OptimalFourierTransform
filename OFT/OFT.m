@@ -423,7 +423,7 @@ while true
           dirnW(j) = dirnSetW(j,i); 
        end
        lastAbsDev = absDev;
-       [dirnW, nuGuessW, ~] = MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+       [dirnW, nuGuessW, absDev] = MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
        decrease = abs(lastAbsDev - absDev);
        if decrease > biggestDecrease
            biggestDecrease = decrease;

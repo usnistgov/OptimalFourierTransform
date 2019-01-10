@@ -41,7 +41,7 @@ classdef testOFT < matlab.unittest.TestCase
     methods (Test)   
         function regressionTests (testCase)
             testWaitBar (testCase)
-            testOFTCalc_1 (testcase)
+            %testOFTCalc_1 (testCase)
             testNyquist (testCase)
             testNearDC (testCase)
             testMultipleOFT (testCase)
@@ -379,16 +379,34 @@ classdef testOFT < matlab.unittest.TestCase
            testCase.TS.T0 = 0;
            testCase.TS.Extent = 2000;
            testCase.TS.nSamples = uint32(300);
-           testCase.TS.Freqs = [0, 0.001238, 0.00165, 0.002475, 0.0033, 0.004808, 0.009901, 0.020408, 0.043478, 0.071429];
+           testCase.TS.Freqs = [0, ...
+                                0.00123762376237624, ...
+                                0.00165016501650165, ...
+                                0.00247524752475248, ...
+                                0.0033003300330033, ...
+                                0.0048780487804878, ...
+                                0.0099009900990099, ...
+                                0.0204081632653061, ...
+                                0.0434782608695652, ...
+                                0.0714285714285714...
+                                ];
            testCase.TS.Amps = [0, 0, 0, 0, 0, 9, 0, 0, 0, 0];
            testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
            
            testCase.TS.Name = 'One Sinusoid';
-           %testOftOnce (testCase);
+           testOftOnce (testCase);
            
            testCase.TS.Name = 'Two Sinusoids';           
            testCase.TS.Amps(5) = 8;
            testOftOnce (testCase);
+           
+           testCase.TS.Name = 'Three Sinusoids'; 
+           testCase.TS.Amps(3) = 11;
+           testCase.TS.Freqs(5) = 0.00495049504950495;
+           testCase.TS.Amps(5) = 0;
+           testCase.TS.Amps(9) = 13;
+           testOftOnce (testCase);
+           
            
            
        end

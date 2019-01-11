@@ -997,7 +997,7 @@ while passesEnIx < nNu
     end
     for i = passesStIx:passesEnIx
         nu(i) = tempN(ixArr(i));
-        ampSq(i) = tempN(ixArr(i));
+        ampSq(i) = tempA(ixArr(i));
     end
     
     % Loop by bracket (within a passN-group)

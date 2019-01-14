@@ -387,6 +387,7 @@ end
 end
 %---------------------
 function [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(tsStage, nuGuessW, nuMaxCW)
+global kMaxNFreqsAtOnceOFT
 %- Minimizes ResidualForMultipleFreqs of nFreqsW variables.
 %- Based on the "powell" routine from "Numerical Recipes in C", Press et al, 1988, pages 314-315,
 %  with func = ResidualForMultipleFreqs.
@@ -401,7 +402,7 @@ ktolMinMulti = 0.00000005;
 
 nNu = length(nuGuessW);
 [absDev] = ResidualForMultipleFreqs(tsStage, nuGuessW);
-dirnSetW = zeros(nNu,nNu);
+dirnSetW = zeros(kMaxNFreqsAtOnceOFT,kMaxNFreqsAtOnceOFT);
 nuGuessAtStOfIterW = zeros(1,nNu);
 for i = 1:nNu
    nuGuessAtStOfIterW(i) = nuGuessW(i);
@@ -452,14 +453,15 @@ while true
     end
     
     [fExtrap] = ResidualForMultipleFreqs(tsStage, extrapolatedNuGuessW);
-    if fExtrap < absDevAtStOfIter
+    
+    if fExtrap < absDevAtStOfIter  % If extrapolated absolute value is lower...
         u = (absDevAtStOfIter - absDev) - biggestDecrease;
         v = absDevAtStOfIter - fExtrap;
         T = 2 * (absDevAtStOfIter - 2 * absDev + fExtrap) * u^2  - biggestDecrease * v^2;
         if T < 0    % reverse direction
-            [dirnW, nuGuessW, ~] = MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+            [dirnW, nuGuessW, absDev] = MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
             for j = 1:length(nuGuessW)
-                dirnW(j)=dirnSetW(j, dirnIxOfBiggestDecrease);
+                dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
             end
         end
         
@@ -512,7 +514,7 @@ for i = 1:length(nuGuessW)
     dirnW(i) = dirnW(i) * xMin;
     nuGuessW(i) = nuGuessW(i) + dirnW(i);
     if nuGuessW(i) < 0; nuGuessW(i) = 0; end
-     if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMacCW; end   
+     if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMaxCW; end   
 end
 end
 %--------------------
@@ -543,7 +545,7 @@ xMin = 0;       % xMin, fxMin is only valid if foundMinimum is true.
 fxMin = 0;
 
 foundMinimum = false;
-[lo, hi]=FindValidLimits1D(nuGuessW,dirnW,nuMaxCW);
+[lo, hi]=FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
 if lo >= hi
    foundMinimum = true;
    xMin = lo;
@@ -771,7 +773,7 @@ for iter = 1:100    %limit the number of iterations to 100
       q = (x - v) * (fx - fw);
       p = (x - v) * q - (x - w) * r;
       q = 2 * (q - r);
-      if q > r; p = -p; end
+      if q > 0; p = -p; end
       q = abs(q);
       eTemp = e;
       e = d;

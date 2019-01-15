@@ -38,13 +38,13 @@ classdef testOFT < matlab.unittest.TestCase
         end
     end
     
-    methods (Test)   
+    methods (Test)
         function regressionTests (testCase)
-%             testWaitBar (testCase)
-%             %testOFTCalc_1 (testCase)
-%             testNyquist (testCase)
-%             testNearDC (testCase)
+            testWaitBar (testCase)
+%             testOFTCalc_1 (testCase)
 %             testMultipleOFT (testCase)
+            testNyquist (testCase)
+            testNearDC (testCase)
             testLab (testCase)
         end
     end

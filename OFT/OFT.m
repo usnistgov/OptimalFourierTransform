@@ -406,9 +406,6 @@ dirnSetW = zeros(kMaxNFreqsAtOnceOFT,kMaxNFreqsAtOnceOFT);
 nuGuessAtStOfIterW = zeros(1,nNu);
 for i = 1:nNu
    nuGuessAtStOfIterW(i) = nuGuessW(i);
-%    for j = 1:nNu
-%       dirnSetW(i,j)=0; 
-%    end
    dirnSetW(i,i)=1;
 end
 
@@ -449,7 +446,7 @@ while true
        extrapolatedNuGuessW(j) = nuGuessW(j) + dirnW(j);
        if extrapolatedNuGuessW(j) < 0; extrapolatedNuGuessW(j)= 0; end
        if extrapolatedNuGuessW(j) > nuMaxCW; extrapolatedNuGuessW(j)= nuMaxCW; end
-       nuGuessAtStOfIterW(i) = nuGuessW(i);
+       nuGuessAtStOfIterW(j) = nuGuessW(j);
     end
     
     [fExtrap] = ResidualForMultipleFreqs(tsStage, extrapolatedNuGuessW);

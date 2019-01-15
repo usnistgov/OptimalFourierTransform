@@ -35,17 +35,22 @@ classdef testOFT < matlab.unittest.TestCase
                 testCase.TS.Amps(i) = 20 + i;
                 testCase.TS.Phases(i) = (117 + 10*i)*pi/180;
             end
+            testCase.TS.NoiseUniformLow = 0;
+            testCase.TS.NoiseUniformHi = 0;
+            testCase.TS.NoiseGaussMean = 0;
+            testCase.TS.NoiseGaussSD = 0;      
         end
     end
     
     methods (Test)
         function regressionTests (testCase)
             testWaitBar (testCase)
-%             testOFTCalc_1 (testCase)
-%             testMultipleOFT (testCase)
+%            testOFTCalc_1 (testCase)
+%            testMultipleOFT (testCase)
             testNyquist (testCase)
             testNearDC (testCase)
             testLab (testCase)
+            testNoise (testCase)
         end
     end
 %--------------------------------------------------------------------------                
@@ -110,9 +115,9 @@ classdef testOFT < matlab.unittest.TestCase
 %             close(Figure);
             
              t = testCase.TS.time;
-            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, true);  % recon, plot progress plot p
+            [actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, true);  % recon, plot progress plot p
             %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, false, 5, true);  % no recon, plot progress plot p
-            [actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, false); % recon, no plot progress plot p
+            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, false); % recon, no plot progress plot p
             [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
             orig_TS = testCase.TS.Ts;
 
@@ -131,6 +136,10 @@ classdef testOFT < matlab.unittest.TestCase
             plot (t, ts_diff,'g')
             title(s(1),testCase.TS.Name);
             title(s(2),'Residual');
+            
+            disp(mat2str(actFreqs));
+            disp(mat2str(actOFT));
+            
             pause
             close all
         end
@@ -479,6 +488,30 @@ classdef testOFT < matlab.unittest.TestCase
            testCase.TS.Freqs(6) = 0.00334448160535117;
            testOftOnce (testCase);
                                                                                                                       
+       end
+       
+       function testNoise (testCase)
+           
+           %set up a 60 fps 5 second system
+           Fs = 60;   % Sample rate
+           duration = 5;
+           testCase.TS = ArtificialTS;
+           testCase.TS.Name = 'Noise Tests';
+           testCase.TS.Description = ' Time Series for Testing';
+           testCase.TS.T0 = 0;
+           testCase.TS.Extent = duration;
+           testCase.TS.nSamples = uint32(duration * Fs);
+           testCase.TS.Freqs = [5];
+           testCase.TS.Amps = [70];
+           testCase.TS.Phases = [0];
+           
+           testCase.TS.NoiseUniformLow = -.01;
+           testCase.TS.NoiseUniformHi = .01;
+           testCase.TS.NoiseGaussMean = 0;
+           testCase.TS.NoiseGaussSD = 0;
+          
+           testOftOnce (testCase);
+                                           
        end
     end
 end

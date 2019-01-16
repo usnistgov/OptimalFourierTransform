@@ -12,7 +12,7 @@ classdef testOFT < matlab.unittest.TestCase
     
     methods (TestClassSetup)
         function getFunctionHandles(testCase)
-            [handles,~,~]=OFT('-test',{},{},{}, {});
+            [handles,~,~]=OFT_fn('-test',{},{},{}, {});
             testCase.localFunctions = handles;
         end
     end    
@@ -44,7 +44,7 @@ classdef testOFT < matlab.unittest.TestCase
     
     methods (Test)
         function regressionTests (testCase)
-            testWaitBar (testCase)
+%            testWaitBar (testCase)
 %            testOFTCalc_1 (testCase)
 %            testMultipleOFT (testCase)
             testNyquist (testCase)
@@ -115,9 +115,9 @@ classdef testOFT < matlab.unittest.TestCase
 %             close(Figure);
             
              t = testCase.TS.time;
-            [actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, true);  % recon, plot progress plot p
-            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, false, 5, true);  % no recon, plot progress plot p
-            %[actFreqs, actOFT, fracErr] = OFT(testCase.TS.Ts, t, .000001, true, 5, false); % recon, no plot progress plot p
+            [actFreqs, actOFT, fracErr] = OFT_fn(testCase.TS.Ts, t, .000001, true, 5, true);  % recon, plot progress plot p
+            %[actFreqs, actOFT, fracErr] = OFT_fn(testCase.TS.Ts, t, .000001, false, 5, true);  % no recon, plot progress plot p
+            %[actFreqs, actOFT, fracErr] = OFT_fn(testCase.TS.Ts, t, .000001, true, 5, false); % recon, no plot progress plot p
             [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
             orig_TS = testCase.TS.Ts;
 
@@ -158,7 +158,7 @@ classdef testOFT < matlab.unittest.TestCase
             end
             ts = double(tsData.g);
                           
-            [actFreqs, actOFT, actFracErr] = OFT(ts, regT, 0.000001, true, 6, true); 
+            [actFreqs, actOFT, actFracErr] = OFT_fn(ts, regT, 0.000001, true, 6, true); 
             [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
             
             close all

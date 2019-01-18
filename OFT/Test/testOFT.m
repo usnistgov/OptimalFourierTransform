@@ -47,9 +47,9 @@ classdef testOFT < matlab.unittest.TestCase
 %            testWaitBar (testCase)
 %            testOFTCalc_1 (testCase)
 %            testMultipleOFT (testCase)
-            testNyquist (testCase)
-            testNearDC (testCase)
-            testLab (testCase)
+%             testNyquist (testCase)
+%             testNearDC (testCase)
+%             testLab (testCase)
             testNoise (testCase)
         end
     end
@@ -496,8 +496,7 @@ classdef testOFT < matlab.unittest.TestCase
            Fs = 60;   % Sample rate
            duration = 5;
            testCase.TS = ArtificialTS;
-           testCase.TS.Name = 'Noise Tests';
-           testCase.TS.Description = ' Time Series for Testing';
+           testCase.TS.Name = 'No-Noise Test';
            testCase.TS.T0 = 0;
            testCase.TS.Extent = duration;
            testCase.TS.nSamples = uint32(duration * Fs);
@@ -505,6 +504,17 @@ classdef testOFT < matlab.unittest.TestCase
            testCase.TS.Amps = [70];
            testCase.TS.Phases = [0];
            
+           testCase.TS.NoiseUniformLow = 0;
+           testCase.TS.NoiseUniformHi = 0;
+           testCase.TS.NoiseGaussMean = 0;
+           testCase.TS.NoiseGaussSD = 0;
+         
+           testOftOnce (testCase);
+           
+           %---
+           
+           testCase.TS.Name = 'Noise Test';
+            
            testCase.TS.NoiseUniformLow = -.01;
            testCase.TS.NoiseUniformHi = .01;
            testCase.TS.NoiseGaussMean = 0;

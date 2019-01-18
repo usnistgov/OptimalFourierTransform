@@ -437,7 +437,7 @@ while true
     if iter >= 30
        %msg = sprintf ('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter); 
        warning('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter)
-       return
+       return 
     end
     
     extrapolatedNuGuessW = zeros(1,length(nuGuessW));

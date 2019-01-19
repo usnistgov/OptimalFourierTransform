@@ -14,9 +14,11 @@ classdef testOFT_class < matlab.unittest.TestCase
     
     methods (Test)
         function regressionTests (testCase)
-            testCase.bWaitBar = false;      % true:  watch internal stage progress
-            testCase.bShowResult = false;   % true, show final result and pause after each test
+            testCase.bWaitBar = true;      % true:  watch internal stage progress
+            testCase.bShowResult = true;   % true, show final result and pause after each test
             setTsDefaults(testCase)
+            
+            % comment out any line below to skip those tests
             testNyquist (testCase)
             testNearDC (testCase)
             testLab (testCase)

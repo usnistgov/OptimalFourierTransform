@@ -43,7 +43,7 @@ classdef ArtificialTS
                ArtTS.Description = Description;
                ArtTS.T0 = T0;
                ArtTS.Extent = Extent;
-               ArtTS.nSamples = nSamples;
+               ArtTS.nSamples = int32(nSamples);
                ArtTS.Freqs = Freqs;
                ArtTS.Amps = Amps;
                ArtTS.Phases = Phases;
@@ -53,8 +53,8 @@ classdef ArtificialTS
                ArtTS.NoiseGaussSD = NoiseGaussSD;
                               
                ArtTS.Valid = ArtTS.checkValid;
-               ArtTS.time = ArtTS.makeTime;    % create the time vector
-               ArtTS.Ts = ArtTS.makeTS();      % create the time series                                     
+               ArtTS.time = ArtTS.makeTime.time;    % create the time vector
+               ArtTS.Ts = ArtTS.makeTS.Ts;      % create the time series   
             end            
         end
        
@@ -78,11 +78,12 @@ classdef ArtificialTS
             Valid = true;
         end
         
-        function ArtTS = makeTime(ArtTS)
+        function ArtTS = makeTime(ArtTS) % Creates a time vector from T0 to Extent+ 1 period with Extent/nSamples period
+ 
             ArtTS.time = (ArtTS.T0 : (ArtTS.Extent)/(ArtTS.nSamples):ArtTS.Extent-ArtTS.Extent/ArtTS.nSamples);
         end
                         
-        function [ArtTS] = makeTS(ArtTS)
+        function [ArtTS] = makeTS(ArtTS) % Creates an artificial time series
             ArtTS.Valid = ArtTS.checkValid;
             if length(ArtTS.time) < 1
                 ArtTS.time = ArtTS.makeTime;

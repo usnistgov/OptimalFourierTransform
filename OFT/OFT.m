@@ -16,10 +16,9 @@ classdef OFT
     %**********************************************************************            
     
     properties (Access = public)
-        bWaitBar = false;
-        Fig1 = [];
-        
+        bWaitBar = false;       
         bDoRecon = true;
+        
         relativeAbsDev = .000001;
         maxNFreqsPerStage = 10;
 
@@ -34,6 +33,7 @@ classdef OFT
     end
     
     properties (Access = private)
+        Fig1 = [];
         stageN = 0;
         targetAbsDevW;
         minChangeAbsDevW;

@@ -19,8 +19,8 @@ classdef testOFT_class < matlab.unittest.TestCase
             setTsDefaults(testCase)
             
             % comment out any line below to skip those tests
-            testNyquist (testCase)
-            testNearDC (testCase)
+%             testNyquist (testCase)
+%             testNearDC (testCase)
             testLab (testCase)
         end
     end

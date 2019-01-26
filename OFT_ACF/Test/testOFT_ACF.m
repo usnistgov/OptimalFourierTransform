@@ -8,6 +8,8 @@ classdef testOFT_ACF < matlab.unittest.TestCase
     properties
         TS
         bWaitBar
+        bDoRecon
+        bDoAcf
         bShowResult
     end
     
@@ -15,10 +17,12 @@ classdef testOFT_ACF < matlab.unittest.TestCase
         function regressionTests (testCase)
             testCase.bShowResult = true;   % true, show final result and pause after each test
             testCase.bWaitBar = true;      % Show the progress bar and internal progress
+            testCase.bDoRecon = true;
+            testCase.bDoAcf = true;
             % comment out any line below to skip those tests
 %             testNyquist (testCase)
 %             testNearDC (testCase)
-%             testLab (testCase)
+             testLab (testCase)
 %            testACF (testCase)
             
         end
@@ -31,8 +35,10 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS = testCase.TS.makeTime;
             testCase.TS = testCase.TS.makeTS;
 
-            oft = OFT();
+            oft = OFT_ACF();
             oft.bWaitBar = testCase.bWaitBar;
+            oft.bDoRecon = testCase.bDoRecon;
+            oft.bDoAcf = testCase.bDoAcf;
             [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
             
             if testCase.bShowResult
@@ -114,7 +120,8 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.NoiseGaussSD = 0.01;
             %testCase.TS.NoiseUniformLow = -0.005;
             %testCase.TS.NoiseUniformHi = 0.005;            
-            testAcfMinimize(testCase)
+            %testAcfMinimize(testCase)
+            testOftOnce(testCase)
         end       
         %-------------------              
         function testAcfMinimize(testCase)
@@ -203,6 +210,9 @@ classdef testOFT_ACF < matlab.unittest.TestCase
                 ];
             testCase.TS.Amps = [0, 0, 0, 0, 0, 9, 0, 0, 0, 0];
             testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
+            
+            testCase.TS.NoiseGaussMean = 0;
+            testCase.TS.NoiseGaussSD = 0.01;            
             
             testCase.TS.Name = 'One Sinusoid';
             testOftOnce (testCase);

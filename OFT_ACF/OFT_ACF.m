@@ -18,7 +18,7 @@ classdef OFT_ACF
     properties (Access = public)
         bWaitBar = false;       
         bDoRecon = true;
-        bDoAcf = true;
+        bDoAcf = false;
         Fig1 = [];
 
         
@@ -32,6 +32,8 @@ classdef OFT_ACF
         kMaxNFreqsPerStage;
         kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
         kRemoveFraction = 1e-9;
+        kOfPeakThreshold = 0.005;
+        kAcfThreshold = 0.05; 
         
         
         %________________DEBUG: TS and Residual capture_________________
@@ -51,7 +53,7 @@ classdef OFT_ACF
     
     methods (Access = public)
         % constructor
-        function obj = OFT_ShapiroWilk(bWaitBar, bDoRecon, kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
+        function obj = OFT_ACF(bWaitBar, bDoRecon, kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
             if nargin > 0
                 % default values
                 obj.bWaitBar = bWaitBar;
@@ -126,13 +128,20 @@ classdef OFT_ACF
                 
                 % Compute the TS for the next stage
                 [tsStage, absDev] = SubtractMultipleSinusoidsFromTS (tsStage, real(MFT_OFT), imag(MFT_OFT), nuStage);
+
+                % check for lop end condition(s)
                 if absDev < obj.targetAbsDevW; break; end
+                if obj.bDoAcf
+                    [~,maxAbs] = obj.SumAbsACF(tsStage);
+                    if maxAbs < obj.kAcfThreshold; break; end
+                    break;
+                end
+
+                    
                 
                 obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
                 
-            end
-            obj.waitBarOFT(100,'');     % close the wait bar
-            
+            end            
             if obj.stageN == 1
                 [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
             else
@@ -144,6 +153,8 @@ classdef OFT_ACF
                 uiwait(msgbox('Done','done'))
                 close(obj.Fig1);
             end
+            obj.waitBarOFT(100,'');     % close the wait bar
+            
         end
         
     end
@@ -182,6 +193,7 @@ classdef OFT_ACF
             %- Out: nu[1..nNu]     Best estimates of frequency indices of sinusoids in ts.
             tsW = tsStage;
             NW = length(tsW);
+            if obj.bDoAcf; numSubPlots = 3; else; numSubPlots = 2; end
             
             even = 1;
             if NW/2 ~= floor(NW/2); even = 0; end;
@@ -197,7 +209,7 @@ classdef OFT_ACF
             nNuInitial = length(nu);
             nNu = 0;
             passN = 0;
-            while nNu < maxNFreqsTotal && absDev > obj.targetAbsDevW && abs(lastAbsDev - absDev) > obj.minChangeAbsDevW
+            while nNu < maxNFreqsTotal                               
                 passN = passN + 1;
                 
                 if nNuInitial > 0
@@ -247,20 +259,32 @@ classdef OFT_ACF
                 obj.waitBarOFT(obj.stageN/obj.kMaxNStages,sprintf('Stage %d, %s part, pass %d, found %d sinusoids',obj.stageN, type, passN, nNu));
                 
                 
-%                 % plot the guess
-%                 if ishandle(obj.Fig1)
-%                     subplot(2,1,1)
-%                     plot (tsStage);
-%                     hold on
-%                     plot (tsStage - tsW, 'r');
-%                     hold off
-%                     title('Current Time Series and Guess')
-%                     subplot(2,1,2)
-%                     plot(tsW)
-%                     title('Next Time Series')
-%                     drawnow;
-%                 end
+                % plot the guess
+                if ishandle(obj.Fig1)
+                    figure(obj.Fig1)
+                    subplot(numSubPlots,1,1)
+                    plot (tsStage);
+                    hold on
+                    plot (tsStage - tsW, 'r');
+                    hold off
+                    title('Current Time Series and Guess')
+                    subplot(numSubPlots,1,2)
+                    plot(tsW)
+                    title('Next Time Series')
+                    drawnow;
+                end
                 
+                % Loop Stop Conditions
+                if ~obj.bDoAcf                    
+                    if ~(absDev > obj.targetAbsDevW && abs(lastAbsDev - absDev) > obj.minChangeAbsDevW)
+                        break;
+                    end
+                else
+                    [~,maxAbs] = obj.SumAbsACF(tsW);
+                    if maxAbs < obj.kAcfThreshold
+                        break;
+                    end                    
+                end         
             end
             
             if recon
@@ -313,7 +337,6 @@ classdef OFT_ACF
             %- Keep parallel arrays nu and maxAmpSqW, ordered by maxAmps, of the maxNAtOnce biggest ampltudes so far.
             %- In:  Xk[0..nuMaxC]    complex DFT
             %- Out: nu[1..nPeaks]    distinct frequency indices of peak amp., nPeaks <= maxNAtOnce
-            kOfPeakThreshold = 0.005;
             maxAmpSqW = -(ones(1,maxNAtOnce));
             lastAmpSq = -1;
             prevLastAmpSq = -2;
@@ -332,7 +355,7 @@ classdef OFT_ACF
             end
             
             % count peaks
-            ampSqThreshold = kOfPeakThreshold * maxAmpSqW(1);
+            ampSqThreshold = obj.kOfPeakThreshold * maxAmpSqW(1);
             if ampSqThreshold <= 0
                 nPeaks = 0;
             else
@@ -1060,35 +1083,38 @@ classdef OFT_ACF
      %*************************OFT_AutoCorr Methods**************************
      methods (Access = public)
          
-         function [sumAbs] = AutoCorrFuncForMultipleFreqs(obj, ts, nu)
+         function [sumAbs, maxAbs] = AutoCorrFuncForMultipleFreqs(obj, ts, nu)
              %- The m-function, i.e. the function to be minimized in searching for the nFreqsW sinusoids whose removal
              %  most reduces the absolute deviation of the time series.
              [cosPart, sinPart] = EstimateContainedSinusoids(ts, nu);
              [ts,~] = SubtractMultipleSinusoidsFromTS (ts,cosPart, sinPart, nu);             
-             sumAbs = obj.SumAbsACF(ts);
+             [sumAbs,maxAbs] = obj.SumAbsACF(ts);
          end
          %--------------------
-         function [sumAbs] = AutoCorrFuncAlongADirn (obj, x, nuGuessW, dirnW, ts)
+         function [sumAbs, maxAbs] = AutoCorrFuncAlongADirn (obj, x, nuGuessW, dirnW, ts)
              nuTryW = zeros(1,length(nuGuessW));
              for i=1:length(nuGuessW)
                  nuTryW(i) = nuGuessW(i) + x * dirnW(i);
              end
-             [sumAbs] = obj.AutoCorrFuncForMultipleFreqs(ts, nuTryW);
+             [sumAbs, maxAbs] = obj.AutoCorrFuncForMultipleFreqs(ts, nuTryW);
          end
          %--------------------
-         function [sumAbs] = SumAbsACF(obj, ts)
+         function [sumAbs, maxAbs] = SumAbsACF(obj, ts)
              N = length(ts);
              [acf] = ifft(abs(fft(ts, 2*N-1)).^2);
-             figure(obj.Fig1);
+             figure(3);
             
              % DEBUG_____________
-             subplot(2,1,1)
-             plot(ts)
-             subplot(2,1,2)
-             plot(acf(2:end));
+             if ishandle(obj.Fig1)
+             figure(obj.Fig1)
+             subplot(3,1,3)
+             stem(acf(2:end));
+             title('Auto Correlation Function')
+             end
              %____________________
              
-             sumAbs = sum(abs(acf));            
+             sumAbs = sum(abs(acf));
+             maxAbs = max(abs(acf));
          end
          %--------------------
          function [ax,bx,cx,foundMinimum,xMin,fxMin] = AcfBracketGuess1D(obj, nuGuessW,dirnW, nuMaxCW, ts)

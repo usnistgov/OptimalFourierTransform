@@ -20,10 +20,10 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.bDoRecon = true;
             testCase.bDoAcf = true;
             % comment out any line below to skip those tests
-%             testNyquist (testCase)
-%             testNearDC (testCase)
-             testLab (testCase)
-%            testACF (testCase)
+            testNyquist (testCase)
+            testNearDC (testCase)
+            testLab (testCase)
+            testACF (testCase)
             
         end
     end
@@ -212,27 +212,27 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
             
             testCase.TS.NoiseGaussMean = 0;
-            testCase.TS.NoiseGaussSD = 0.01;            
+            testCase.TS.NoiseGaussSD = .01;            
             
             testCase.TS.Name = 'One Sinusoid';
-            testOftOnce (testCase);
+             testOftOnce (testCase);
             
             testCase.TS.Name = 'Two Sinusoids';
             testCase.TS.Amps(5) = 8;
-            testOftOnce (testCase);
+             testOftOnce (testCase);
             
             testCase.TS.Name = 'Three Sinusoids';
             testCase.TS.Amps(5) = 0;
             testCase.TS.Amps(3) = 11;
             testCase.TS.Freqs(6) = 0.00495049504950495;
             testCase.TS.Amps(9) = 13;
-            testOftOnce (testCase);
+             testOftOnce (testCase);
             
             
             testCase.TS.Name = 'Four Sinusoids (2 sec)';
             testCase.TS.Phases(3) = 235*pi/180;
             testCase.TS.Amps(5) = 8;
-            testOftOnce (testCase);
+             testOftOnce (testCase);
             
             testCase.TS.Name = 'Five Sinusoids (2 sec)';
             testCase.TS.Freqs(3) = 0.00165837479270315;

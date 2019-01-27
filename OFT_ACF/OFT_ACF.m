@@ -26,14 +26,14 @@ classdef OFT_ACF
         maxNFreqsPerStage = 10;
 
         % constants
+        kOfPeakThreshold = 0.005;   % may need to be tuned for noisy signals
+        kAcfThreshold = 0.05;       % may need to be tuned for noisy signals
+        kMinChangeTargetAbsDevFraction = 0.0001;  % may need to be tuned for noisy signals
         kMaxNFreqsAtOnceOFT = 10;
         kMaxNStages = 2;
-        kMinChangeTargetAbsDevFraction = 0.0001;
         kMaxNFreqsPerStage;
         kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
         kRemoveFraction = 1e-9;
-        kOfPeakThreshold = 0.005;
-        kAcfThreshold = 0.05; 
         
         
         %________________DEBUG: TS and Residual capture_________________
@@ -53,11 +53,14 @@ classdef OFT_ACF
     
     methods (Access = public)
         % constructor
-        function obj = OFT_ACF(bWaitBar, bDoRecon, kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
+        function obj = OFT_ACF(bWaitBar, bDoRecon, bDoAcf, kOfPeakThreshold, kAcfThreshold,  kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
             if nargin > 0
                 % default values
                 obj.bWaitBar = bWaitBar;
                 obj.bDoRecon = bDoRecon;
+                obj.bDoAcf = bDoAcf;
+                obj.kOfPeakThreshold = kOfPeakThreshold;
+                obj.kAcfThreshold = kAcfThreshold;
                 obj.kMaxNFreqsAtOnceOFT = kMaxNFreqsAtOnceOFT;
                 obj.kMaxNStages = kMaxNStages;
                 obj.relativeAbsDev = relativeAbsDev;
@@ -187,6 +190,12 @@ classdef OFT_ACF
         end
         % ---------------
         function [nu, bracket] = FindFreqIxsInTS (obj, tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu)
+            
+            % function handle to the appropriate optimization function, either residual or
+            % autocorrelation depending on user setting "bDoAcf"
+            hOptimizeFunction = @obj.MinimizeResidualByVaryingMultipleFreqs;
+            if ~recon && obj.bDoAcf; hOptimizeFunction = @obj.MinimizeAcfByVaryingMultipleFreqs; end;
+            
             %- Finds best frequency indices for sinusoids in ts.
             %- Tries maxNFreqsAtOnce sinusoids at once, and finds up to maxNFreqsTotal.
             %- In:  nu[1..nNu]     Guesses for nu's in the initial iteration, if present (ie if nNu > 0).
@@ -226,17 +235,18 @@ classdef OFT_ACF
                     nuGuessW = nuGuessW(1:nFreqsW);
                 end
                 
-                [nuGuessW] = obj.MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
-                
+                [nuGuessW] = hOptimizeFunction(tsW, nuGuessW, nuMaxCW);  % calls the user selected optimization
+                                
                 if ~recon
                     bRemoved = true;
                     while bRemoved
                         [nuGuessW, bRemoved] = ConsolidateFreqs(nuGuessW,obj.kNuConsolidate);
+                        %[nuGuessW] = hOptimizeFunction(tsW, nuGuessW, nuMaxCW);
                         [nuGuessW] = obj.MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
                         nFreqsW = length(nuGuessW);
                     end
-                end
-                
+                end                
+
                 [cosPartW, sinPartW] = EstimateContainedSinusoids(tsW, nuGuessW);
                 if nNu + nFreqsW < maxNFreqsTotal
                     lastAbsDev = absDev;
@@ -275,11 +285,11 @@ classdef OFT_ACF
                 end
                 
                 % Loop Stop Conditions
-                if ~obj.bDoAcf                    
+                if ~obj.bDoAcf      % if user chooses ACF optimization                 
                     if ~(absDev > obj.targetAbsDevW && abs(lastAbsDev - absDev) > obj.minChangeAbsDevW)
                         break;
                     end
-                else
+                else        % if user chooses to minimize the residual
                     [~,maxAbs] = obj.SumAbsACF(tsW);
                     if maxAbs < obj.kAcfThreshold
                         break;
@@ -1079,8 +1089,7 @@ classdef OFT_ACF
         end
       
     end
-
-     %*************************OFT_AutoCorr Methods**************************
+     %*************************OFT_AutoCorr Methods************************
      methods (Access = public)
          
          function [sumAbs, maxAbs] = AutoCorrFuncForMultipleFreqs(obj, ts, nu)
@@ -1102,7 +1111,6 @@ classdef OFT_ACF
          function [sumAbs, maxAbs] = SumAbsACF(obj, ts)
              N = length(ts);
              [acf] = ifft(abs(fft(ts, 2*N-1)).^2);
-             figure(3);
             
              % DEBUG_____________
              if ishandle(obj.Fig1)
@@ -1110,6 +1118,7 @@ classdef OFT_ACF
              subplot(3,1,3)
              stem(acf(2:end));
              title('Auto Correlation Function')
+             drawnow
              end
              %____________________
              
@@ -1450,7 +1459,8 @@ classdef OFT_ACF
             %- Finish when an iteration fails to reduce AutoCorrFuncForMultipleFreqs by ktolMinMulti, relatively.
             
             % Constants
-            ktolMinMulti = 0.00000005;
+            %ktolMinMulti = 0.00000005;
+            ktolMinMulti = 0.05;
                                     
             nNu = length(nuGuessW);
             [absDev] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
@@ -1466,14 +1476,14 @@ classdef OFT_ACF
                                 
                 iter = iter + 1;
                 
-%                 %___________Research: CAPTURE TS AND REDIDUAL__________
+%                 %___________DEBUG: CAPTURE TS AND RESIDUAL_______________
 %                 obj.iterData(iter).num = iter;
 %                 obj.iterData(iter).nuGuessW = nuGuessW;
 %                 obj.iterData(iter).TS = tsStage;
 %                 [cosPart, sinPart] = EstimateContainedSinusoids(tsStage, nuGuessW);
 %                 [resid,~] = SubtractMultipleSinusoidsFromTS (tsStage,cosPart, sinPart, nuGuessW);
 %                 obj.iterData(iter).Residual = resid;
-%                 %__________________________________________________________
+%                 %________________________________________________________
 
                 
                 absDevAtStOfIter = absDev;
@@ -1493,13 +1503,13 @@ classdef OFT_ACF
                     end
                 end
                 
-                % finish?                
-%                 %_________________________
-%                 % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
-%                 msg = sprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,absDevAtStOfIter - absDev,ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5);
-%                 disp(msg)                
-%                 %_________________________
-                
+                %_________DEBUG  TUNING____________________________________
+                % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
+                msg = sprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,absDevAtStOfIter - absDev,ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5);
+                disp(msg)                
+                %__________________________________________________________
+
+                % finish?                              
                 if abs(absDevAtStOfIter - absDev) <= ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5
                     return
                 end
@@ -1533,8 +1543,9 @@ classdef OFT_ACF
                     
                 end
             end
-        end
-         
+         end
+     
      end
+     %*********************************************************************
 end
 

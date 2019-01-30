@@ -21,20 +21,21 @@ classdef OFT_ACF
         bDoAcf = false;
         Fig1 = [];
 
-        
-        relativeAbsDev = .000001;
-        maxNFreqsPerStage = 10;
-
-        % constants
-        kOfPeakThreshold = 0.005;   % may need to be tuned for noisy signals
-        kAcfThreshold = 0.05;       % may need to be tuned for noisy signals
-        kMinChangeTargetAbsDevFraction = 0.0001;  % may need to be tuned for noisy signals
-        kMaxNFreqsAtOnceOFT = 10;
-        kMaxNStages = 2;
-        kMaxNFreqsPerStage;
+        % tuning constants
+        kOfPeakThreshold = 0.005; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;  
+        kAcfThreshold = 0.05;     % Threshold of the maxAbsACF (not the sum) used to stop the OFT when bDoACF;  
+        relativeAbsDev = 0.000001;
+        relativeSumAbsAcf = 0.000001;
+        kMinChangeTargetAbsDevFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
+        kMinChangeTargetSumAbsAcfFraction = 0.0001; % The fraction of targetSumAbsAcf to be used as a threshold to end OneStageOFT
         kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
         kRemoveFraction = 1e-9;
         
+        % constants
+        maxNFreqsPerStage = 10;
+        kMaxNFreqsAtOnceOFT = 10;
+        kMaxNStages = 5;
+                 
         
         %________________DEBUG: TS and Residual capture_________________
         % structure array contains TS and residual from each iteration of MinimizeAcfByVaryingMultipleFreqs
@@ -44,10 +45,13 @@ classdef OFT_ACF
 
     end
     
-    properties (Access = private)
+    properties (Access = public)
         stageN = 0;
         targetAbsDevW;
+        targetSumAbsAcf
         minChangeAbsDevW;
+        minChangeSumAbsAcf;
+        kMaxNFreqsPerStage;
         
     end
     
@@ -99,6 +103,12 @@ classdef OFT_ACF
             obj.targetAbsDevW = obj.relativeAbsDev * absDevOfOriginalTS_W;
             obj.minChangeAbsDevW = obj.kMinChangeTargetAbsDevFraction * obj.targetAbsDevW;
             
+            if obj.bDoAcf
+                [sumAbsAcfOfOriginalTS_W,~] = obj.SumAbsACF(ts);
+                obj.targetSumAbsAcf = obj.relativeSumAbsAcf * sumAbsAcfOfOriginalTS_W;
+                obj.minChangeSumAbsAcf = obj.kMinChangeTargetSumAbsAcfFraction * obj.targetSumAbsAcf;
+            end
+            
             % ts for the first stage
             tsStage = ts;
             freqStage = [];
@@ -127,28 +137,31 @@ classdef OFT_ACF
                     freqs(j) = freqStage(i);
                     MFT_OFT(j) = MftStage(i);
                     nuStage(j) = freqStage(i) * extent;
-                end                
+                end   
                 
                 % Compute the TS for the next stage
-                [tsStage, absDev] = SubtractMultipleSinusoidsFromTS (tsStage, real(MFT_OFT), imag(MFT_OFT), nuStage);
+                tempTs = tsStage;
+                plot(tempTs)        % DEBUG
+                hold on
+                [tsStage, absDev] = SubtractMultipleSinusoidsFromTS (tsStage, real(MftStage), imag(MftStage), freqStage*extent);
+                plot (tsStage,'g-');
+                plot(tempTs-tsStage,'r-');
+                hold off
 
-                % check for lop end condition(s)
+                % check for loop end condition(s)
                 if absDev < obj.targetAbsDevW; break; end
                 if obj.bDoAcf
                     [~,maxAbs] = obj.SumAbsACF(tsStage);
                     if maxAbs < obj.kAcfThreshold; break; end
-                    break;
                 end
-
-                    
-                
+                                    
                 obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
                 
             end            
             if obj.stageN == 1
                 [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
             else
-                [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
+                [freqs, MFT_OFT] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
                 fracErr = absDev / absDevOfOriginalTS_W;
             end
             
@@ -179,14 +192,17 @@ classdef OFT_ACF
                 
                 [freqStage, ~] = obj.FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, true, freqStage);
             end
+%             maxNFreqsAtOnce = obj.kMaxNFreqsAtOnceOFT;
+%             maxNFreqsTotal = 3 * obj.kMaxNFreqsAtOnceOFT / 2;
             % *** Main Part ***
-            [freqStage, bracket] = obj.FindFreqIxsInTS (tsStage, maxNFreqsAtOnce, maxNFreqsTotal, false, freqStage);
+            [freqStage, bracket] = obj.FindFreqIxsInTS (tsStage, obj.kMaxNFreqsAtOnceOFT, obj.maxNFreqsPerStage, false, freqStage);
             
+     
             % *** Final Part ***
             dT = extent/length(tsStage);
             t = 0:dT:extent-dT;
             [freqStage, MftStage, fracErr] = MFT (tsStage, t, freqStage/extent, bracket);
-           
+            
         end
         % ---------------
         function [nu, bracket] = FindFreqIxsInTS (obj, tsStage, maxNFreqsAtOnce, maxNFreqsTotal, recon, nu)
@@ -194,7 +210,7 @@ classdef OFT_ACF
             % function handle to the appropriate optimization function, either residual or
             % autocorrelation depending on user setting "bDoAcf"
             hOptimizeFunction = @obj.MinimizeResidualByVaryingMultipleFreqs;
-            if ~recon && obj.bDoAcf; hOptimizeFunction = @obj.MinimizeAcfByVaryingMultipleFreqs; end;
+            if ~recon && obj.bDoAcf; hOptimizeFunction = @obj.MinimizeAcfByVaryingMultipleFreqs; end
             
             %- Finds best frequency indices for sinusoids in ts.
             %- Tries maxNFreqsAtOnce sinusoids at once, and finds up to maxNFreqsTotal.
@@ -213,6 +229,7 @@ classdef OFT_ACF
             passNArr = zeros(1,maxNFreqsTotal);
             
             absDev = AbsDevOfTS(tsW,length(tsW));
+            if obj.bDoAcf; [sumAbsAcf,~] = obj.SumAbsACF(tsW); end
             lastAbsDev = 0;
             
             nNuInitial = length(nu);
@@ -250,6 +267,7 @@ classdef OFT_ACF
                 [cosPartW, sinPartW] = EstimateContainedSinusoids(tsW, nuGuessW);
                 if nNu + nFreqsW < maxNFreqsTotal
                     lastAbsDev = absDev;
+                    if obj.bDoAcf; lastSumAbsACF = sumAbsAcf; end
                     [tsW, absDev] = SubtractMultipleSinusoidsFromTS (tsW, cosPartW, sinPartW, nuGuessW);
                 end
                 
@@ -290,8 +308,8 @@ classdef OFT_ACF
                         break;
                     end
                 else        % if user chooses to minimize the residual
-                    [~,maxAbs] = obj.SumAbsACF(tsW);
-                    if maxAbs < obj.kAcfThreshold
+                    [sumAbsAcf,maxAbs] = obj.SumAbsACF(tsW);
+                    if (maxAbs < obj.targetSumAbsAcf && abs(lastSumAbsACF - sumAbsAcf) > obj.minChangeSumAbsAcf)
                         break;
                     end                    
                 end         
@@ -1463,7 +1481,7 @@ classdef OFT_ACF
             ktolMinMulti = 0.05;
                                     
             nNu = length(nuGuessW);
-            [absDev] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
+            [sumAbs,~] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
             dirnSetW = zeros(obj.kMaxNFreqsAtOnceOFT,obj.kMaxNFreqsAtOnceOFT);
             nuGuessAtStOfIterW = zeros(1,nNu);
             for i = 1:nNu
@@ -1486,7 +1504,7 @@ classdef OFT_ACF
 %                 %________________________________________________________
 
                 
-                absDevAtStOfIter = absDev;
+                sumAbsAtStOfIter = sumAbs;
                 biggestDecrease = 0;
                 dirnIxOfBiggestDecrease = 0;
                 dirnW = zeros(1,nNu);
@@ -1494,9 +1512,10 @@ classdef OFT_ACF
                     for j = 1:nNu
                         dirnW(j) = dirnSetW(j,i);
                     end
-                    lastAbsDev = absDev;
-                    [dirnW, nuGuessW, absDev] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
-                    decrease = abs(lastAbsDev - absDev);
+%                    dirnW = dirnSetW(:,i);
+                    lastSumAbs = sumAbs;
+                    [dirnW, nuGuessW, sumAbs] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                    decrease = abs(lastSumAbs - sumAbs);
                     if decrease > biggestDecrease
                         biggestDecrease = decrease;
                         dirnIxOfBiggestDecrease = i;
@@ -1505,12 +1524,12 @@ classdef OFT_ACF
                 
                 %_________DEBUG  TUNING____________________________________
                 % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
-                msg = sprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,absDevAtStOfIter - absDev,ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5);
+                msg = sprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,sumAbsAtStOfIter - sumAbs,ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbs)) * 0.5);
                 disp(msg)                
                 %__________________________________________________________
 
                 % finish?                              
-                if abs(absDevAtStOfIter - absDev) <= ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5
+                if abs(sumAbsAtStOfIter - sumAbs) <= ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbs)) * 0.5
                     return
                 end
                 
@@ -1530,12 +1549,12 @@ classdef OFT_ACF
                 
                 [fExtrap] = obj.AutoCorrFuncForMultipleFreqs(tsStage, extrapolatedNuGuessW);
                 
-                if fExtrap < absDevAtStOfIter  % If extrapolated sum(abs(acf)) value is lower...
-                    u = (absDevAtStOfIter - absDev) - biggestDecrease;
-                    v = absDevAtStOfIter - fExtrap;
-                    T = 2 * (absDevAtStOfIter - 2 * absDev + fExtrap) * u^2  - biggestDecrease * v^2;
+                if fExtrap < sumAbsAtStOfIter  % If extrapolated sum(abs(acf)) value is lower...
+                    u = (sumAbsAtStOfIter - sumAbs) - biggestDecrease;
+                    v = sumAbsAtStOfIter - fExtrap;
+                    T = 2 * (sumAbsAtStOfIter - 2 * sumAbs + fExtrap) * u^2  - biggestDecrease * v^2;
                     if T < 0    % ...then change the direction in the direction set
-                        [dirnW, nuGuessW, absDev] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                        [dirnW, nuGuessW, sumAbs] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
                         for j = 1:length(nuGuessW)
                             dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
                         end

@@ -21,7 +21,8 @@ classdef testOFT_class < matlab.unittest.TestCase
             % comment out any line below to skip those tests
 %             testNyquist (testCase)
 %             testNearDC (testCase)
-            testLab (testCase)
+%            testLab (testCase)
+             test50_45 (testCase)  
         end
     end
     
@@ -71,8 +72,7 @@ classdef testOFT_class < matlab.unittest.TestCase
             close all
             
         end
-        %-------------------
-        
+        %-------------------        
         function [ts_OFT] = SynthesizeOFT(testCase, Freqs, t, actOFT)
             n = length(t);
             extent = t(end)+mean(diff(t))-t(1);
@@ -91,8 +91,6 @@ classdef testOFT_class < matlab.unittest.TestCase
                 ts_OFT = ts_OFT + mag * cos(radians-ang);
             end
         end
-
-        
         %-------------------
         function setTsDefaults(testCase)
             nSinusoidsMax = 20;
@@ -223,8 +221,7 @@ classdef testOFT_class < matlab.unittest.TestCase
            testCase.TS.Freqs(6) = 0.00334448160535117;
            testOftOnce (testCase);
                                                                                                                       
-       end            
-                   
+       end                           
         %-------------------
         function testNyquist (testCase)
             kNuEgdeWidth = 0.00005;
@@ -282,7 +279,52 @@ classdef testOFT_class < matlab.unittest.TestCase
                         
         end       
         %-------------------
-        
+        function test50_45 (testCase)
+            load('5045.mat')
+            testCase.TS = ArtificialTS;
+            Fs = 50;
+            duration = 5;
+            testCase.TS.Name = '50F045F';
+            testCase.TS.T0 = 0;
+            testCase.TS.Extent = duration;
+            testCase.TS.nSamples = uint32(duration * Fs);            
+            testCase.TS.Ts = TS.MagErr(:,6);
+            
+            testCase.TS = testCase.TS.makeTime;
+           oft = OFT();
+            oft.bWaitBar = testCase.bWaitBar;
+            [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
+            
+            if testCase.bShowResult
+                t = testCase.TS.time;
+                [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
+                orig_TS = testCase.TS.Ts;
+                
+                
+                close all
+                figure(2)
+                s(1)=subplot(2,1,1);
+                hold on
+                plot (t,orig_TS,'b')
+                plot(t,act_TS,'r')
+                hold off
+                
+                s(2)=subplot (2,1,2);
+                ts_diff = act_TS - orig_TS;
+                
+                plot (t, ts_diff,'g')
+                title(s(1),testCase.TS.Name);
+                title(s(2),'Residual');
+            end
+            
+            disp(mat2str(actFracErr));
+            disp(mat2str(actFreqs));
+            disp(mat2str(actOFT));
+            
+            if testCase.bShowResult; pause; end
+            close all            
+            
+        end
         
         
     end

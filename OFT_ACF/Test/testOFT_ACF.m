@@ -11,6 +11,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
         bDoRecon
         bDoAcf
         bShowResult
+        kAcfThreshold
     end
     
     methods (Test)
@@ -20,11 +21,11 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.bDoRecon = true;
             testCase.bDoAcf = true;
             % comment out any line below to skip those tests
-            testNyquist (testCase)
-            testNearDC (testCase)
-            testLab (testCase)
-            testACF (testCase)
-            
+%             testNyquist (testCase)
+%             testNearDC (testCase)
+%             testLab (testCase)
+%             testACF (testCase)
+            test50_45 (testCase)
         end
     end
     
@@ -215,24 +216,24 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.NoiseGaussSD = .01;            
             
             testCase.TS.Name = 'One Sinusoid';
-             testOftOnce (testCase);
+            testOftOnce (testCase);
             
             testCase.TS.Name = 'Two Sinusoids';
             testCase.TS.Amps(5) = 8;
-             testOftOnce (testCase);
+            testOftOnce (testCase);
             
             testCase.TS.Name = 'Three Sinusoids';
             testCase.TS.Amps(5) = 0;
             testCase.TS.Amps(3) = 11;
             testCase.TS.Freqs(6) = 0.00495049504950495;
             testCase.TS.Amps(9) = 13;
-             testOftOnce (testCase);
+            testOftOnce (testCase);
             
             
             testCase.TS.Name = 'Four Sinusoids (2 sec)';
             testCase.TS.Phases(3) = 235*pi/180;
             testCase.TS.Amps(5) = 8;
-             testOftOnce (testCase);
+            testOftOnce (testCase);
             
             testCase.TS.Name = 'Five Sinusoids (2 sec)';
             testCase.TS.Freqs(3) = 0.00165837479270315;
@@ -358,6 +359,98 @@ classdef testOFT_ACF < matlab.unittest.TestCase
                         
         end
         %-------------------
+       function test50_45 (testCase)
+           
+           % load the time series
+            load('5045.mat')                        
+            
+            testCase.bDoRecon = true;
+            testCase.bDoAcf = true;
+            testCase.kAcfThreshold = 1e-12;
+            
+            testCase.TS = ArtificialTS;
+            Fs = 50;
+            duration = 5;
+            testCase.TS.Name = '50F045F';
+            testCase.TS.T0 = 0;
+            testCase.TS.Extent = duration;
+            testCase.TS.nSamples = uint32(duration * Fs);            
+            testCase.TS.Ts = TS.MagErr(:,6);
+            
+            testCase.TS = testCase.TS.makeTime;
+            
+%             % subtract the best fit line
+%             P = polyfit(testCase.TS.time',testCase.TS.Ts,1);
+%             yfit = P(1)* testCase.TS.time'+P(2);
+%             testCase.TS.Ts = testCase.TS.Ts - yfit;
+            
+            
+            oft = OFT_ACF();
+            oft.bWaitBar = testCase.bWaitBar;
+            oft.bDoRecon = testCase.bDoRecon;
+            oft.bDoAcf = testCase.bDoAcf;
+            oft.kAcfThreshold = testCase.kAcfThreshold;
+            [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
+            
+            if testCase.bShowResult
+                t = testCase.TS.time;
+                [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
+                orig_TS = testCase.TS.Ts';
+                
+                
+                close all
+                figure(2)
+                s(1)=subplot(2,1,1);
+                hold on
+                plot (t,orig_TS,'b')
+                plot(t,act_TS,'r')
+                hold off
+                
+                s(2)=subplot (2,1,2);
+                ts_diff = act_TS - orig_TS;
+                
+                plot (t, ts_diff,'g.')
+                title(s(1),testCase.TS.Name);
+                title(s(2),'Residual');
+                figure(3)
+                hist(ts_diff);
+                %hold on
+                %hist((randn(length(ts_diff),1)*std(ts_diff))+mean(ts_diff));
+
+            end
+            
+            disp(mat2str(actFracErr));
+            disp(mat2str(actFreqs));
+            disp(mat2str(abs(actOFT)));
+            
+            if testCase.bShowResult; pause; end
+            
+            
+%             for i = 1:length(actFreqs)
+%                 [act_TS] = testCase.SynthesizeOFT(actFreqs(1:i), t, actOFT(1:i));
+%                 close all
+%                 figure(2)
+%                 s(1)=subplot(2,1,1);
+%                 hold on
+%                 plot (t,orig_TS,'b')
+%                 plot(t,act_TS,'r')
+%                 hold off
+%                 
+%                 s(2)=subplot (2,1,2);
+%                 ts_diff = act_TS - orig_TS;
+%                 
+%                 plot (t, ts_diff,'g')
+%                 title(s(1),testCase.TS.Name);
+%                 title(s(2),'Residual');
+%                 drawnow
+%             end
+                
+            
+            
+            close all            
+            
+        end
+        
     end
     
 end

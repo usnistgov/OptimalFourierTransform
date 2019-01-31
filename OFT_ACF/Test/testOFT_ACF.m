@@ -16,15 +16,15 @@ classdef testOFT_ACF < matlab.unittest.TestCase
     
     methods (Test)
         function regressionTests (testCase)
-            testCase.bShowResult = true;   % true, show final result and pause after each test
-            testCase.bWaitBar = true;      % Show the progress bar and internal progress
+            testCase.bShowResult = false;   % true, show final result and pause after each test
+            testCase.bWaitBar = false;      % Show the progress bar and internal progress
             testCase.bDoRecon = true;
             testCase.bDoAcf = true;
             % comment out any line below to skip those tests
-%             testNyquist (testCase)
-%             testNearDC (testCase)
-%             testLab (testCase)
-%             testACF (testCase)
+            testNyquist (testCase)
+            testNearDC (testCase)
+            testLab (testCase)
+            testACF (testCase)
             test50_45 (testCase)
         end
     end
@@ -49,31 +49,39 @@ classdef testOFT_ACF < matlab.unittest.TestCase
                 
                 
                 close all
-                figure(2)
-                s(1)=subplot(2,1,1);
+                figure()
+                s(1)=subplot(3,1,1);
                 hold on
                 plot (t,orig_TS,'b')
                 plot(t,act_TS,'r')
                 hold off
                 
-                s(2)=subplot (2,1,2);
+                s(2)=subplot (3,1,2);
                 ts_diff = act_TS - orig_TS;
                 
                 plot (t, ts_diff,'g')
                 title(s(1),testCase.TS.Name);
                 title(s(2),'Residual');
+                
+                s(3) = subplot(3,1,3);
+                [hi, cx] = hist(ts_diff,25);
+                %[hig, cxg] = hist((randn(length(testCase.TS.noiseTs),1)*std(testCase.TS.noiseTs))+mean(testCase.TS.noiseTs),25);
+                [hig, cxg] = hist(testCase.TS.noiseTs,25);
+                stairs(cx, hi), hold on, stairs(cxg, hig, 'r --'), hold off;
+                title(s(3),'Histograms of remainder(b) and original noise(r)');
+                
             end
             
-            disp(mat2str(actFracErr));
+            fprintf('found %d sinudoids, fractional error = %s',length(actFreqs),mat2str(actFracErr));
             disp(mat2str(actFreqs));
-            disp(mat2str(actOFT));
+            disp(mat2str(abs(actOFT)));
             
             if testCase.bShowResult; pause; end
             close all
             
         end
         %-------------------       
-        function [ts_OFT] = SynthesizeOFT(testCase, Freqs, t, actOFT)
+        function [ts_OFT] = SynthesizeOFT(~, Freqs, t, actOFT)
             n = length(t);
             extent = t(end)+mean(diff(t))-t(1);
             twoPiExtentON = 2* pi * extent / n;
@@ -306,7 +314,8 @@ classdef testOFT_ACF < matlab.unittest.TestCase
         %-------------------
         function testNyquist (testCase)
             kNuEgdeWidth = 0.00005;
-            
+            setRegressionDefaults(testCase)
+                        
             testCase.TS.Name = 'Test Nyquist (600)';
             testCase.TS.nSamples = uint32(600);
             testCase.TS.Freqs = 0.5 * testCase.TS.nSamples/testCase.TS.Extent;
@@ -374,81 +383,65 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Name = '50F045F';
             testCase.TS.T0 = 0;
             testCase.TS.Extent = duration;
-            testCase.TS.nSamples = uint32(duration * Fs);            
-            testCase.TS.Ts = TS.MagErr(:,6);
+            testCase.TS.nSamples = uint32(duration * Fs); 
             
-            testCase.TS = testCase.TS.makeTime;
-            
-%             % subtract the best fit line
-%             P = polyfit(testCase.TS.time',testCase.TS.Ts,1);
-%             yfit = P(1)* testCase.TS.time'+P(2);
-%             testCase.TS.Ts = testCase.TS.Ts - yfit;
-            
-            
-            oft = OFT_ACF();
-            oft.bWaitBar = testCase.bWaitBar;
-            oft.bDoRecon = testCase.bDoRecon;
-            oft.bDoAcf = testCase.bDoAcf;
-            oft.kAcfThreshold = testCase.kAcfThreshold;
-            [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
-            
-            if testCase.bShowResult
-                t = testCase.TS.time;
-                [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
-                orig_TS = testCase.TS.Ts';
+            lTS = size(TS.MagErr);
+            for i = 1:lTS(2)
+                
+                testCase.TS.Name = (sprintf('50F045F MagErr %d',i));
+                disp(testCase.TS.Name);
+                testCase.TS.Ts = TS.MagErr(:,i);                
+                testCase.TS = testCase.TS.makeTime;
+                
+                % subtract the best fit line
+                P = polyfit(testCase.TS.time',testCase.TS.Ts,1);
+                yfit = P(1)* testCase.TS.time'+P(2);
+                testCase.TS.Ts = testCase.TS.Ts - yfit;                
+                
+                oft = OFT_ACF();
+                oft.bWaitBar = testCase.bWaitBar;
+                oft.bDoRecon = testCase.bDoRecon;
+                oft.bDoAcf = testCase.bDoAcf;
+                oft.kAcfThreshold = testCase.kAcfThreshold;
+                [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
                 
                 
+                if testCase.bShowResult
+                    t = testCase.TS.time;
+                    [act_TS] = testCase.SynthesizeOFT(actFreqs, t, actOFT);
+                    orig_TS = testCase.TS.Ts';
+                    
+                    
+                    close all
+                    figure()
+                    s(1)=subplot(3,1,1);
+                    hold on
+                    plot (t,orig_TS,'b')
+                    plot(t,act_TS,'r')
+                    hold off
+                    
+                    s(2)=subplot (3,1,2);
+                    ts_diff = act_TS - orig_TS;
+                    
+                    plot (t, ts_diff,'g')
+                    title(s(1),testCase.TS.Name);
+                    title(s(2),'Residual');
+                    
+                    s(3) = subplot(3,1,3);
+                    [hi, cx] = hist(ts_diff,25);
+                    [hig, cxg] = hist((randn(length(ts_diff),1)*std(ts_diff))+mean(ts_diff),25);
+                    stairs(cx, hi), hold on, stairs(cxg, hig, 'r --'), hold off;
+                    title(s(3),'Histograms of remainder(b) and randn(remainder)(r)');
+                    
+                end
+                
+                disp(sprintf('found %d sinudoids, fractional error = %s',length(actFreqs),mat2str(actFracErr)));
+                disp(mat2str(actFreqs));
+                disp(mat2str(abs(actOFT)));
+                
+                if testCase.bShowResult; pause; end
                 close all
-                figure(2)
-                s(1)=subplot(2,1,1);
-                hold on
-                plot (t,orig_TS,'b')
-                plot(t,act_TS,'r')
-                hold off
-                
-                s(2)=subplot (2,1,2);
-                ts_diff = act_TS - orig_TS;
-                
-                plot (t, ts_diff,'g.')
-                title(s(1),testCase.TS.Name);
-                title(s(2),'Residual');
-                figure(3)
-                hist(ts_diff);
-                %hold on
-                %hist((randn(length(ts_diff),1)*std(ts_diff))+mean(ts_diff));
-
             end
-            
-            disp(mat2str(actFracErr));
-            disp(mat2str(actFreqs));
-            disp(mat2str(abs(actOFT)));
-            
-            if testCase.bShowResult; pause; end
-            
-            
-%             for i = 1:length(actFreqs)
-%                 [act_TS] = testCase.SynthesizeOFT(actFreqs(1:i), t, actOFT(1:i));
-%                 close all
-%                 figure(2)
-%                 s(1)=subplot(2,1,1);
-%                 hold on
-%                 plot (t,orig_TS,'b')
-%                 plot(t,act_TS,'r')
-%                 hold off
-%                 
-%                 s(2)=subplot (2,1,2);
-%                 ts_diff = act_TS - orig_TS;
-%                 
-%                 plot (t, ts_diff,'g')
-%                 title(s(1),testCase.TS.Name);
-%                 title(s(2),'Residual');
-%                 drawnow
-%             end
-                
-            
-            
-            close all            
-            
         end
         
     end

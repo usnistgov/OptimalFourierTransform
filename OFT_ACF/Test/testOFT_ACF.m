@@ -8,6 +8,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
     properties
         TS
         bWaitBar
+        bPause
         bDoRecon
         bDoAcf
         bShowResult
@@ -16,8 +17,9 @@ classdef testOFT_ACF < matlab.unittest.TestCase
     
     methods (Test)
         function regressionTests (testCase)
-            testCase.bShowResult = false;   % true, show final result and pause after each test
+            testCase.bShowResult = true;   % true, show final result and pause after each test
             testCase.bWaitBar = false;      % Show the progress bar and internal progress
+            testCase.bPause = false;
             testCase.bDoRecon = true;
             testCase.bDoAcf = true;
             % comment out any line below to skip those tests
@@ -38,6 +40,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
 
             oft = OFT_ACF();
             oft.bWaitBar = testCase.bWaitBar;
+            oft.bPause = testCase.bPause;
             oft.bDoRecon = testCase.bDoRecon;
             oft.bDoAcf = testCase.bDoAcf;
             [actFreqs, actOFT, actFracErr] = oft.OFT_fn(testCase.TS.Ts, testCase.TS.time);
@@ -137,7 +140,8 @@ classdef testOFT_ACF < matlab.unittest.TestCase
            testCase.TS = testCase.TS.makeTS;                                 
            oft = OFT_ACF();
            
-%            oft.bWaitBar = true;         
+%            oft.bWaitBar = true;
+%            oft.bPause = true;
 %            [freqs,MFT,fracErr] = oft.OFT_fn(testCase.TS.Ts,testCase.TS.time);
 %            disp(mat2str(freqs))
 %            disp(mat2str(MFT))
@@ -400,6 +404,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
                 
                 oft = OFT_ACF();
                 oft.bWaitBar = testCase.bWaitBar;
+                oft.bPause = testCase.bPause;
                 oft.bDoRecon = testCase.bDoRecon;
                 oft.bDoAcf = testCase.bDoAcf;
                 oft.kAcfThreshold = testCase.kAcfThreshold;

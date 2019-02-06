@@ -16,11 +16,19 @@ classdef OFT_ACF
     %**********************************************************************            
     
     properties (Access = public)
-        bWaitBar = false;       
+        bWaitBar = false; 
+        bPause = false;
         bDoRecon = true;
         bDoAcf = false;
         Fig1 = [];
 
+        % constants
+        kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
+        kRemoveFraction = 1e-9; % all frequencies with squared amplitudes lower than the product of the second highest amplitude squared and kRemoveFraction will be removed
+        maxNFreqsPerStage = 10;
+        kMaxNFreqsAtOnceOFT = 10;
+        kMaxNStages = 5;
+        
         % tuning parameters: absolute deviation
         kOfPeakThreshold = 0.005; % Threshold of the absDev to be used to stop the OFT when ~bDoACF; 
         relativeAbsDev = 0.000001;
@@ -32,12 +40,6 @@ classdef OFT_ACF
         relativeSumAbsAcf = 0.000001;
         kMinChangeTargetSumAbsAcfFraction = 0.0001; % The fraction of targetSumAbsAcf to be used as a threshold to end OneStageOFT
         
-        % constants
-        kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
-        kRemoveFraction = 1e-9;
-        maxNFreqsPerStage = 10;
-        kMaxNFreqsAtOnceOFT = 10;
-        kMaxNStages = 5;
                  
         
         %________________DEBUG: TS and Residual capture_________________
@@ -191,13 +193,13 @@ classdef OFT_ACF
             end            
             if obj.stageN == 1
                 [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
-            else
+            else                                                                        
                 [freqs, MFT_OFT] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
                 fracErr = absDev / absDevOfOriginalTS_W;
             end
             
-            if ishandle(obj.Fig1)
-                uiwait(msgbox('Done','done'))
+            if ishandle(obj.Fig1) 
+                if obj.bPause, uiwait(msgbox('Done','done')), end
                 close(obj.Fig1);
             end
             obj.waitBarOFT(100,'');     % close the wait bar
@@ -632,9 +634,19 @@ classdef OFT_ACF
             
             xMin = 0;       % xMin, fxMin is only valid if foundMinimum is true.
             fxMin = 0;
-            
+           
+            % initial guess for a and b These were moved to here to ensure values get returned if lo>=hi below  
             foundMinimum = false;
-            [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
+            [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);            
+            scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale            
+            ax = 0;
+            bx = kGoldLess1OP * scalor;
+            cx = bx + kGold * (bx - ax);
+           
+            
+              % moved up so that values get returned if lo >= hi
+%             foundMinimum = false;
+%             [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
             if lo >= hi
                 foundMinimum = true;
                 xMin = lo;
@@ -643,10 +655,12 @@ classdef OFT_ACF
             end
             
             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
-            
-            % initial guess for a and b
-            ax = 0;
-            bx = kGoldLess1OP * scalor;
+
+%             moved to above the test for lo >= hi so values can be returned            
+%             % initial guess for a and b
+%             ax = 0;
+%             bx = kGoldLess1OP * scalor;
+
             % ensure a and b are valid directional moves
             if ax < lo; ax = lo; end
             if ax > hi; ax = hi; end
@@ -674,7 +688,7 @@ classdef OFT_ACF
             end
             
             %initial guess for c
-            cx = bx + kGold * (bx - ax);
+%            cx = bx + kGold * (bx - ax); %moved to above the test for lo >= hi so values can be returned  
             if cx < lo; cx = lo; end
             if cx > hi; cx = hi; end
             fc = obj.ResidualAlongADirn(cx, nuGuessW, dirnW, ts);
@@ -1218,8 +1232,19 @@ classdef OFT_ACF
              xMin = 0;       % xMin, fxMin is only valid if foundMinimum is true.
              fxMin = 0;
              
-             foundMinimum = false;
+             %--------------------
+             % These lines were moved from below so that values can be
+             % returned if the lo >= hi test is true.  In this case (foundMinimum) the
+             % values will not be used.
              [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
+             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
+             ax = 0;
+             bx = kGoldLess1OP * scalor;
+             cx = bx + kGold * (bx - ax);
+             %----------------------                    
+             
+             foundMinimum = false;
+%             [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
              if lo >= hi
                  foundMinimum = true;
                  xMin = lo;
@@ -1227,11 +1252,11 @@ classdef OFT_ACF
                  return
              end
              
-             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
+%             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
              
              % initial guess for a and b
-             ax = 0;
-             bx = kGoldLess1OP * scalor;
+%              ax = 0;
+%              bx = kGoldLess1OP * scalor;
              % ensure a and b are valid directional moves
              if ax < lo; ax = lo; end
              if ax > hi; ax = hi; end
@@ -1259,7 +1284,7 @@ classdef OFT_ACF
              end
              
              %initial guess for c
-             cx = bx + kGold * (bx - ax);
+%             cx = bx + kGold * (bx - ax);
              if cx < lo; cx = lo; end
              if cx > hi; cx = hi; end
              fc = obj.AutoCorrFuncAlongADirn(cx, nuGuessW, dirnW, ts);

@@ -17,6 +17,7 @@ classdef ArtificialTS
         NoiseUniformHi  % double Uniform distribution noise highest value
         NoiseGaussMean  % double noise mean value
         NoiseGaussSD    % double noise standard deviation
+        noiseTs         % a time series containing only the additive noise.
         
         Ts              % Time Series
         time            % Time vector
@@ -96,18 +97,17 @@ classdef ArtificialTS
             % add noise
             bNoiseOn = false;
             NoiseUniformRange = ArtTS.NoiseUniformHi - ArtTS.NoiseUniformLow;
-            if NoiseUniformRange ~= 0
-                bNoiseOn = true;
-            end
+            if NoiseUniformRange ~= 0, bNoiseOn = true, end
             if ArtTS.NoiseGaussSD > 0
                 bNoiseOn = true;
             end
             if bNoiseOn
-                x = x ...
-                    + ArtTS.NoiseGaussSD * randn(size(x))...
+                ArtTS.noiseTs = ...
+                    ArtTS.NoiseGaussSD * randn(size(x))...
                     + ArtTS.NoiseGaussMean ...
                     + NoiseUniformRange * randn(size(x)) ...
                     + ArtTS.NoiseUniformLow;
+                x = x + ArtTS.noiseTs;
             end
                
             ArtTS.Ts = x;                

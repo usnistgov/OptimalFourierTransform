@@ -18,16 +18,16 @@ classdef testOFT_ACF < matlab.unittest.TestCase
     methods (Test)
         function regressionTests (testCase)
             testCase.bShowResult = true;   % true, show final result and pause after each test
-            testCase.bWaitBar = false;      % Show the progress bar and internal progress
+            testCase.bWaitBar = true;      % Show the progress bar and internal progress
             testCase.bPause = false;
             testCase.bDoRecon = true;
-            testCase.bDoAcf = true;
+            testCase.bDoAcf = false;
             % comment out any line below to skip those tests
-            testNyquist (testCase)
-            testNearDC (testCase)
-            testLab (testCase)
-            testACF (testCase)
-            test50_45 (testCase)
+%             testNyquist (testCase)
+%             testNearDC (testCase)
+             testLab (testCase)
+%             testACF (testCase)
+%             test50_45 (testCase)
         end
     end
     
@@ -75,7 +75,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
                 
             end
             
-            fprintf('found %d sinudoids, fractional error = %s',length(actFreqs),mat2str(actFracErr));
+            fprintf('found %d sinudoids, fractional error = %s\n',length(actFreqs),mat2str(actFracErr));
             disp(mat2str(actFreqs));
             disp(mat2str(abs(actOFT)));
             
@@ -225,27 +225,27 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
             
             testCase.TS.NoiseGaussMean = 0;
-            testCase.TS.NoiseGaussSD = .01;            
+            testCase.TS.NoiseGaussSD = 0;            
             
             testCase.TS.Name = 'One Sinusoid';
-            testOftOnce (testCase);
+%            testOftOnce (testCase);
             
             testCase.TS.Name = 'Two Sinusoids';
             testCase.TS.Amps(5) = 8;
-            testOftOnce (testCase);
+%            testOftOnce (testCase);
             
             testCase.TS.Name = 'Three Sinusoids';
             testCase.TS.Amps(5) = 0;
             testCase.TS.Amps(3) = 11;
             testCase.TS.Freqs(6) = 0.00495049504950495;
             testCase.TS.Amps(9) = 13;
-            testOftOnce (testCase);
+%            testOftOnce (testCase);
             
             
             testCase.TS.Name = 'Four Sinusoids (2 sec)';
             testCase.TS.Phases(3) = 235*pi/180;
             testCase.TS.Amps(5) = 8;
-            testOftOnce (testCase);
+%            testOftOnce (testCase);
             
             testCase.TS.Name = 'Five Sinusoids (2 sec)';
             testCase.TS.Freqs(3) = 0.00165837479270315;
@@ -253,7 +253,7 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Phases(4) = 235*pi/180;
             testCase.TS.Freqs(5) = 0.00332225913621262;
             testCase.TS.Amps(8) = 12;
-            testOftOnce (testCase);
+%            testOftOnce (testCase);
             
             testCase.TS.Name = 'Six Sinusoids (9 sec)';
             testCase.TS.Freqs(3) = 0.00165016501650165;
@@ -264,21 +264,21 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Amps(7) = 8;
             testCase.TS.Amps(8) = 0;
             testCase.TS.Amps(10) = 7;
-            testOftOnce (testCase);
+%             testOftOnce (testCase);
             
             testCase.TS.Name = 'Seven Sinusoids (10 sec)';
             testCase.TS.Freqs(3) = 0.00166389351081531;
             testCase.TS.Phases(4) = 235*pi/180;
             testCase.TS.Freqs(5) = 0.00332225913621262;
             testCase.TS.Amps(8) = 12;
-            testOftOnce (testCase);
+%             testOftOnce (testCase);
             
             testCase.TS.Name = 'Eight Sinusoids (49 sec)';
             testCase.TS.Freqs(3) = 0.00165016501650165;
             testCase.TS.Phases(4) = 230*pi/180;
             testCase.TS.Freqs(5) = 0.0033003300330033;
             testCase.TS.Amps(5) = 9;
-            testOftOnce (testCase);
+%             testOftOnce (testCase);
             
             testCase.TS.Name = 'Nine Sinusoids (39 sec)';
             testCase.TS.Amps(2) = 8;
@@ -290,29 +290,29 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.TS.Amps(9) = 8;
             testCase.TS.Phases(10) = 40*pi/180;
             testOftOnce (testCase);
-            
-            testCase.TS.Name = 'Ten Sinusoids (33 sec)';
-            testCase.TS.Freqs(1) = 0.0065359477124183;
-            testCase.TS.Amps(1) = 9;
-            testCase.TS.Phases(1) = 150*pi/180;
-            testOftOnce (testCase);
-            
-            testCase.TS.Name = 'Two Sinusoids close but resolvable';
-            testCase.TS.Freqs(1) = 0;
-            testCase.TS.Freqs(2) = 0.00123762376237624;
-            testCase.TS.Freqs(6) = 0.00346020761245675;
-            testCase.TS.Amps = [0, 0, 0, 0, 8, 9, 0, 0, 0, 0];
-            testCase.TS.Phases = [0,90,45,230,0,20,15,0,215,0] * pi/180;
-            testOftOnce (testCase);
-            
-            testCase.TS.Name = 'Two Sinusoids too close';
-            testCase.TS.Freqs(6) = 0.00343642611683849;
-            testOftOnce (testCase);
-            
-            testCase.TS.Name = 'Two Sinusoids consolidated';
-            testCase.TS.Freqs(5) = 0.00332225913621262;
-            testCase.TS.Freqs(6) = 0.00334448160535117;
-            testOftOnce (testCase);
+%             
+%             testCase.TS.Name = 'Ten Sinusoids (33 sec)';
+%             testCase.TS.Freqs(1) = 0.0065359477124183;
+%             testCase.TS.Amps(1) = 9;
+%             testCase.TS.Phases(1) = 150*pi/180;
+%             testOftOnce (testCase);
+%             
+%             testCase.TS.Name = 'Two Sinusoids close but resolvable';
+%             testCase.TS.Freqs(1) = 0;
+%             testCase.TS.Freqs(2) = 0.00123762376237624;
+%             testCase.TS.Freqs(6) = 0.00346020761245675;
+%             testCase.TS.Amps = [0, 0, 0, 0, 8, 9, 0, 0, 0, 0];
+%             testCase.TS.Phases = [0,90,45,230,0,20,15,0,215,0] * pi/180;
+%             testOftOnce (testCase);
+%             
+%             testCase.TS.Name = 'Two Sinusoids too close';
+%             testCase.TS.Freqs(6) = 0.00343642611683849;
+%             testOftOnce (testCase);
+%             
+%             testCase.TS.Name = 'Two Sinusoids consolidated';
+%             testCase.TS.Freqs(5) = 0.00332225913621262;
+%             testCase.TS.Freqs(6) = 0.00334448160535117;
+%             testOftOnce (testCase);
             
         end       
         %-------------------

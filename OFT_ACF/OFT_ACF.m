@@ -32,15 +32,19 @@ classdef OFT_ACF
         % tuning parameters: absolute deviation
         kOfPeakThreshold = 0.005; % Threshold of the absDev to be used to stop the OFT when ~bDoACF; 
         relativeAbsDev = 0.000001;
-        
-        % tuning parameters: Autocorrelation
-        kAcfThreshold = 1e-12;     % Threshold of the maxAbsACF (not the sum) used to stop the OFT when bDoACF; 
-        kTargetFractionOfSumAcf = 1e-6;
         kMinChangeTargetAbsDevFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
-        relativeSumAbsAcf = 0.000001;
-        kMinChangeTargetSumAbsAcfFraction = 0.0001; % The fraction of targetSumAbsAcf to be used as a threshold to end OneStageOFT
         
-                 
+%         % tuning parameters: Autocorrelation
+%         kAcfThreshold = 1e-12;     % Threshold of the maxAbsACF (not the sum) used to stop the OFT when bDoACF; 
+%         kTargetFractionOfSumAcf = 1e-6;
+%         relativeSumAbsAcf = 0.000001;
+%         kMinChangeTargetSumAbsAcfFraction = 0.0001; % The fraction of targetSumAbsAcf to be used as a threshold to end OneStageOFT
+        
+        % tuning parameters: Kurtosis
+        kKrtThreshold = 1e-8;
+        kTargetFractionOfKrt = 1e-6;
+        kMinChangeTargetKrt = 0.0001;
+        relativeKrt = 0.000001;                 
         
         %________________DEBUG: TS and Residual capture_________________
         % structure array contains TS and residual from each iteration of MinimizeAcfByVaryingMultipleFreqs
@@ -53,23 +57,26 @@ classdef OFT_ACF
     properties (Access = public)
         stageN = 0;
         targetAbsDevW;
-        targetSumAbsAcf
+        %targetSumAbsAcf
+        targetKrt;
         minChangeAbsDevW;
-        minChangeSumAbsAcf;
+        minChangeKrt;
+        %minChangeSumAbsAcf;
         kMaxNFreqsPerStage;
         
     end
     
     methods (Access = public)
         % constructor
-        function obj = OFT_ACF(bWaitBar, bDoRecon, bDoAcf, kOfPeakThreshold, kAcfThreshold,  kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
+        function obj = OFT_ACF(bWaitBar, bDoRecon, bDoAcf, kOfPeakThreshold, kKrtThreshold,  kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
             if nargin > 0
                 % default values
                 obj.bWaitBar = bWaitBar;
                 obj.bDoRecon = bDoRecon;
                 obj.bDoAcf = bDoAcf;
                 obj.kOfPeakThreshold = kOfPeakThreshold;
-                obj.kAcfThreshold = kAcfThreshold;
+                % obj.kAcfThreshold = kAcfThreshold;
+                obj.kKrtThreshold = kKrtThreshold;
                 obj.kMaxNFreqsAtOnceOFT = kMaxNFreqsAtOnceOFT;
                 obj.kMaxNStages = kMaxNStages;
                 obj.relativeAbsDev = relativeAbsDev;
@@ -110,12 +117,14 @@ classdef OFT_ACF
             
             
             if obj.bDoAcf
-                %[sumAbsAcf,maxAbsAcf,~] = obj.SumAbsACF(ts);
-                [sumAbsAcf,~,~] = obj.SumAbsACF(ts);
-                sumAbsAcfOfOriginalTS_W = sumAbsAcf;
-                % maxAbsAcfOfOriginalTS_W = maxAbsAcf;
-                obj.targetSumAbsAcf = obj.relativeSumAbsAcf * sumAbsAcfOfOriginalTS_W;
-                obj.minChangeSumAbsAcf = obj.kMinChangeTargetSumAbsAcfFraction * obj.targetSumAbsAcf;
+                Krt = obj.robkrt(ts);
+                KrtOfOriginalTS_W = Krt;
+                obj.targetKrt = obj.relativeKrt * KrtOfOriginalTS_W;
+                obj.minChangeKrt = obj.kMinChangeTargetKrt * obj.targetKrt;
+%                 [sumAbsAcf,~,~] = obj.SumAbsACF(ts);
+%                 sumAbsAcfOfOriginalTS_W = sumAbsAcf;
+%                obj.targetSumAbsAcf = obj.relativeSumAbsAcf * sumAbsAcfOfOriginalTS_W;
+%                obj.minChangeSumAbsAcf = obj.kMinChangeTargetSumAbsAcfFraction * obj.targetSumAbsAcf;
             end
             
             % ts for the first stage
@@ -140,9 +149,12 @@ classdef OFT_ACF
                     % DEBUG, have a look at the ACF thresholds and see if
                     % ACF has decreased much.
                     if obj.bDoAcf
-                       if sumAbsAcf <= obj.targetSumAbsAcf
-                           break
-                       end
+                        if Krt <= obj.targetKrt
+                            break
+                        end
+%                        if sumAbsAcf <= obj.targetSumAbsAcf
+%                            break
+%                        end
                     end
                 end
                 
@@ -185,8 +197,10 @@ classdef OFT_ACF
                 % check for loop end condition(s)
                 if absDev < obj.targetAbsDevW; break; end
                 if obj.bDoAcf
-                    [sumAbsAcf,maxAbsAcf,~] = obj.SumAbsACF(tsStage);
-                    if maxAbsAcf < obj.kAcfThreshold; break; end
+                    Krt = obj.robkrt(tsStage);
+                    if Krt < obj.kKrtThreshold, break, end
+%                     [sumAbsAcf,maxAbsAcf,~] = obj.SumAbsACF(tsStage);
+%                     if maxAbsAcf < obj.kAcfThreshold; break; end
                 end
                  obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
                                                                    
@@ -245,7 +259,7 @@ classdef OFT_ACF
             hOptimizeFunction = @obj.MinimizeResidualByVaryingMultipleFreqs;
             numSubPlots = 3;
             if ~recon && obj.bDoAcf
-                hOptimizeFunction = @obj.MinimizeAcfByVaryingMultipleFreqs;
+                hOptimizeFunction = @obj.MinimizeKrtByVaryingMultipleFreqs;
                 numSubPlots = 3;
             end
             
@@ -266,8 +280,10 @@ classdef OFT_ACF
             
             absDev = AbsDevOfTS(tsW,length(tsW));
             if obj.bDoAcf && ~recon
-                [sumAbsAcf,~,~] = obj.SumAbsACF(tsW);
-                lastSumAbsACF = sumAbsAcf;
+                Krt = obj.robkrt(tsW);
+                lastKrt = Krt;
+%                [sumAbsAcf,~,~] = obj.SumAbsACF(tsW);
+%                lastSumAbsACF = sumAbsAcf;
             end
             lastAbsDev = 0;
             
@@ -306,7 +322,10 @@ classdef OFT_ACF
                 [cosPartW, sinPartW] = EstimateContainedSinusoids(tsW, nuGuessW);
                 if nNu + nFreqsW < maxNFreqsTotal
                     lastAbsDev = absDev;
-                    if obj.bDoAcf && ~recon, lastSumAbsACF = sumAbsAcf; end
+                    if obj.bDoAcf && ~recon
+                        lastKrt = Krt;
+                       %lastSumAbsACF = sumAbsAcf; 
+                    end
                     [tsW, absDev] = SubtractMultipleSinusoidsFromTS (tsW, cosPartW, sinPartW, nuGuessW);
                 end
                 
@@ -347,8 +366,10 @@ classdef OFT_ACF
                         break;
                     end
                 else        % if user chooses to minimize the residual
-                    [sumAbsAcf,maxAbsAcf,~] = obj.SumAbsACF(tsW);
-                    if (maxAbsAcf < obj.targetSumAbsAcf && abs(lastSumAbsACF - sumAbsAcf) > obj.minChangeSumAbsAcf)
+                    %[sumAbsAcf,maxAbsAcf,~] = obj.SumAbsACF(tsW);
+                    Krt = obj.robkrt(tsW);
+                    %if (maxAbsAcf < obj.targetSumAbsAcf && abs(lastSumAbsACF - sumAbsAcf) > obj.minChangeSumAbsAcf)
+                    if (Krt < obj.targetKrt && abs(lastKrt - Krt) > obj.minChangeKrt)
                         break;
                     end                    
                 end         
@@ -549,7 +570,7 @@ classdef OFT_ACF
                     u = (absDevAtStOfIter - absDev) - biggestDecrease;
                     v = absDevAtStOfIter - fExtrap;
                     T = 2 * (absDevAtStOfIter - 2 * absDev + fExtrap) * u^2  - biggestDecrease * v^2;
-                    if T < 0    % reverse direction
+                    if T < 0    % change direction
                         [dirnW, nuGuessW, absDev] = obj.MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
                         for j = 1:length(nuGuessW)
                             dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
@@ -688,7 +709,7 @@ classdef OFT_ACF
             end
             
             %initial guess for c
-%            cx = bx + kGold * (bx - ax); %moved to above the test for lo >= hi so values can be returned  
+            cx = bx + kGold * (bx - ax); %moved to above the test for lo >= hi so values can be returned  
             if cx < lo; cx = lo; end
             if cx > hi; cx = hi; end
             fc = obj.ResidualAlongADirn(cx, nuGuessW, dirnW, ts);
@@ -1160,53 +1181,529 @@ classdef OFT_ACF
      %*************************OFT_AutoCorr Methods************************
      methods (Access = public)
          
-         function [sumAbs, maxAbs] = AutoCorrFuncForMultipleFreqs(obj, ts, nu)
+%          function [sumAbs, maxAbs] = AutoCorrFuncForMultipleFreqs(obj, ts, nu)
+%              %- The m-function, i.e. the function to be minimized in searching for the nFreqsW sinusoids whose removal
+%              %  most reduces the absolute deviation of the time series.
+%              [cosPart, sinPart] = EstimateContainedSinusoids(ts, nu);
+%              [ts,~] = SubtractMultipleSinusoidsFromTS (ts,cosPart, sinPart, nu);             
+%              [sumAbs,maxAbs,acf] = obj.SumAbsACF(ts);
+% %              DEBUG and Tuning Plot--------------------------------------
+% %              if ishandle(obj.Fig1)
+% %                  figure(obj.Fig1)
+% %                  subplot(3,1,2)
+% %                  plot(ts)
+% %                  title('Autocorr Residual')
+% %                  subplot(3,1,3)
+% %                  stem(acf(2:end));
+% %                  title('Auto Correlation Function')
+% %                  drawnow
+% %              end
+% %              ------------------------------------------------------------
+%              
+%          end
+%          %--------------------
+%          function [sumAbs, maxAbs] = AutoCorrFuncAlongADirn (obj, x, nuGuessW, dirnW, ts)
+%              nuTryW = zeros(1,length(nuGuessW));
+%              for i=1:length(nuGuessW)
+%                  nuTryW(i) = nuGuessW(i) + x * dirnW(i);
+%              end
+%              [sumAbs, maxAbs] = obj.AutoCorrFuncForMultipleFreqs(ts, nuTryW);
+%          end
+%          %--------------------
+%          function [sumAbs, maxAbs,acf] = SumAbsACF(~, ts)
+%              N = length(ts);
+%              [acf] = ifft(abs(fft(ts, 2*N-1)).^2);          
+% %              DEBUG and Tuning Plot--------------------------------------
+% %              if ishandle(obj.Fig1)
+% %                  figure(obj.Fig1)
+% %                  subplot(3,1,3)
+% %                  stem(acf(2:end));
+% %                  title('Auto Correlation Function')
+% %                  drawnow
+% %              end
+% %              ------------------------------------------------------------
+%              
+%              sumAbs = sum(abs(acf));
+%              maxAbs = max(abs(acf));
+%          end
+%          %--------------------
+%          function [ax,bx,cx,foundMinimum,xMin,fxMin] = AcfBracketGuess1D(obj, nuGuessW,dirnW, nuMaxCW, ts)
+%              %- Concerns argument x to AutoCorrFuncAlongADirn, which then constructs a multivariable argument to
+%              %  ResidualForMultipleFreqs, namely nuGuessW(i) + x * dirnW(i). (So x = 0 corresponds to nuGuessW.)
+%              %- In:  -   (Implicitly: nuGuessW, AutoCorrFuncAlongADirn, FindValidLimits1D.)
+%              %  Out: ax, bx, cx      ax < bx < cx
+%              %                       AutoCorrFuncAlongADirn(ax) >= AutoCorrFuncAlongADirn(bx) <= AutoCorrFuncAlongADirn(cx).
+%              %       foundMinimum    True iff found minimum instead of brackets for a minimum (due to limits on x)
+%              %       xMin            Only set if foundMinimum. Value of x for the minimum.
+%              %       fxMin           Only set if foundMinimum. The minimum value.
+%              %- Based on the "mnbrak" routine from "Numerical Recipes in C", Press et al, 1988, page 297,
+%              %  with func(x) = AutoCorrFuncAlongADirn(x).
+%              %- Searches downhill from x = 0, starting with small steps (relative to the range of allowable values),
+%              %  taking larger and larger steps. If run into a limit, then search around a bit more near that limit.
+%              %  If the limit still appears to be the minimum, declare that as the minimum (because could not find
+%              %  a bracket).
+%              
+%              % Constants
+%              kTiny = 1e-20;
+%              kGold = 1.618034;   % the golden ratio
+%              kGoldLess1OP = 0.618034;
+%              kScale = 1000;
+%              kLimitTol = kScale * 0.0005;
+%              
+%              xMin = 0;       % xMin, fxMin is only valid if foundMinimum is true.
+%              fxMin = 0;
+%              
+%              %--------------------
+%              % These lines were moved from below so that values can be
+%              % returned if the lo >= hi test is true.  In this case (foundMinimum) the
+%              % values will not be used.
+%              [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
+%              scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
+%              ax = 0;
+%              bx = kGoldLess1OP * scalor;
+%              cx = bx + kGold * (bx - ax);
+%              %----------------------                    
+%              
+%              foundMinimum = false;
+% %             [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
+%              if lo >= hi
+%                  foundMinimum = true;
+%                  xMin = lo;
+%                  [fxMin] = obj.AutoCorrFuncAlongADirn(xMin, nuGuessW, dirnW, ts);
+%                  return
+%              end
+%              
+% %             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
+%              
+%              % initial guess for a and b
+% %              ax = 0;
+% %              bx = kGoldLess1OP * scalor;
+%              % ensure a and b are valid directional moves
+%              if ax < lo; ax = lo; end
+%              if ax > hi; ax = hi; end
+%              if bx < lo; bx = lo; end
+%              if bx > hi; bx = hi; end
+%              if ax == bx
+%                  bx = ax + kGoldLess1OP * scalor;
+%                  if bx > hi; bx = hi; end
+%                  if ax == bx
+%                      bx = ax - kGoldLess1OP * scalor;
+%                      if bx < lo; bx = lo; end
+%                  end
+%              end
+%              
+%              % ensure a -> b is downhill
+%              fa = obj.AutoCorrFuncAlongADirn(ax, nuGuessW, dirnW, ts);
+%              fb = obj.AutoCorrFuncAlongADirn(bx, nuGuessW, dirnW, ts);
+%              if fb > fa      %a <--> b
+%                  temp = ax;
+%                  ax = bx;
+%                  bx = temp;
+%                  temp = fa;
+%                  fa = fb;
+%                  fb = temp;
+%              end
+%              
+%              %initial guess for c
+% %             cx = bx + kGold * (bx - ax);
+%              if cx < lo; cx = lo; end
+%              if cx > hi; cx = hi; end
+%              fc = obj.AutoCorrFuncAlongADirn(cx, nuGuessW, dirnW, ts);
+%              
+%              % have a new c (i.e. cx and fc)
+%              while true
+%                  if fc - fb > 1e-10 * abs(fc)
+%                      return 
+%                  end    % exit if b -> is uphill
+%                  
+%                  % exit is c is up against a limit
+%                  if cx == lo || cx == hi
+%                      while abs(cx - bx) > kLimitTol * scalor
+%                          u = 0.5 * (bx + cx);
+%                          fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                          if fc - fu > 1e-9 * abs(fc)
+%                              ax = bx;
+%                              bx = u;
+%                              return
+%                          end
+%                          if fu > fb
+%                              cx = u;
+%                              return
+%                          end
+%                          ax = bx;
+%                          bx = u;
+%                      end
+%                      foundMinimum = true;
+%                      xMin = cx;
+%                      fxMin = fc;
+%                      return
+%                  end
+%                  
+%                  % compute a new cx
+%                  r = (bx - ax) * (fb - fc);    % compute by parabolic extrapolation
+%                  q = (bx - cx) * (fb - fa);
+%                  diff = q - r;
+%                  nzDiff = abs(diff);
+%                  if nzDiff < kTiny; nzDiff = kTiny; end
+%                  if diff < 0; nzDiff = -nzDiff; end
+%                  u = bx - ((bx - cx) * q - (bx - ax) * r) / (2 * nzDiff);
+%                  if u < lo; u = lo; end
+%                  if u > hi; u = hi; end
+%                  ulim = bx + 100 * (cx - bx);     % max step
+%                  if ulim < lo; ulim = lo; end
+%                  if ulim > hi; ulim = hi; end
+%                  takeDefault = false;
+%                  
+%                  % u in (bx, cx)
+%                  if (bx - u) * (u - cx) > 0
+%                      fu =  obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                      if fu < fc  %b->a, u->b, return
+%                          ax = bx;
+%                          bx = u;
+%                          return
+%                      else
+%                          if fu > fb %u->c, return
+%                              cx = u;
+%                              return
+%                          end
+%                      end
+%                  else
+%                      % u in (cx, ulim)
+%                      if (cx - u) * (u - ulim) > 0
+%                          fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                          if fu < fc % c->b, u->c
+%                              bx = cx;
+%                              cx = u;
+%                              fb = fc;
+%                              fc = fu;
+%                              takeDefault = true;
+%                          end
+%                      else
+%                          % ulim in (cx, u)
+%                          if (u - ulim) * (ulim - cx) >= 0
+%                              u = ulim;
+%                              fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                          else
+%                              takeDefault = true;
+%                          end
+%                      end
+%                  end
+%                  
+%                  if takeDefault
+%                      u = cx + kGold * (cx - bx);
+%                      if u < lo; u = lo; end
+%                      if u > hi; u = hi; end
+%                      fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                  end
+%                  
+%                  ax = bx;
+%                  bx = cx;
+%                  cx = u;
+%                  fa = fb;
+%                  fb = fc;
+%                  fc = fu;
+%              end
+%          end
+%          %--------------------
+%          function [xMin, minSizeOfResidual] = MinimizeAcf1D(obj, ax, bx, cx, nuGuessW, dirnW, ts)
+%             %- Brent's method for finding the minimum value of a function of one variable.
+%             %- Sets xMin to the value of x between ax and cx that mimimizes AutoCorrFuncAlongADirn.
+%             %- Requires either ax < bx < cx or ax > bx > cx, and
+%             %    AutoCorrFuncAlongADirn(ax) >= AutoCorrFuncAlongADirn(bx) <= AutoCorrFuncAlongADirn(cx).
+%             %- Based on the "brent" routine from "Numerical Recipes in C", Press et al, 1988, pages 299 - 302,
+%             %  with f = MinFn1. Derviatives too expensive in our case.
+%             %- Finds xMin to with in about +-ktolMin1D (bracketing interval of about 2 * ktolMin1D).
+%             %  Set ktolMin1D to about the square root of machine precision (see p.294 of "Numerical Recipes in C").
+%             %  Double is 64 bit with ~15 decimal points of precision, so setting ktolMin1D to less than 3 * 10^-8
+%             %  is a waste of time.
+%             %- x always remains in [ax, cx] by design.
+%             
+%             % Constants
+%             ktolMin1D = 0.0002;
+%             kCGold = 0.381966;
+%             
+%             % [a,b] bracket solution, i.e. minimum lies in [a,b]
+%             if ax < cx
+%                 a = ax;
+%                 b = cx;
+%             else
+%                 a = cx;
+%                 b = ax;
+%             end
+%             
+%             e = 0;      %e = Movement of x (i.e. d) on last step.
+%             x = bx;     %x will be the point with the lowest fn value found so far
+%             w = bx;     % w is the point with the 2nd lowest fn value found so far
+%             v = bx;     % v is the point with the 3rd lowest fn value found so far
+%             fx = obj.AutoCorrFuncAlongADirn(x, nuGuessW, dirnW, ts);
+%             fv = fx;
+%             fw = fx;
+%             d = 0;
+%             
+%             for iter = 1:100    %limit the number of iterations to 100
+%                 xm = 0.5 * (a+b);
+%                 tol1 = ktolMin1D * abs(x) + 1e-10;
+%                 tol2 = 2 * tol1;
+%                 if abs(x - xm) <= (tol2 - 0.5*(b-a))
+%                     xMin = x;
+%                     minSizeOfResidual = fx;
+%                     return
+%                 end
+%                 
+%                 if abs(e) > tol1
+%                     r = (x - w) * (fx - fv);   % construct a trial parabilic fit
+%                     q = (x - v) * (fx - fw);
+%                     p = (x - v) * q - (x - w) * r;
+%                     q = 2 * (q - r);
+%                     if q > 0; p = -p; end
+%                     q = abs(q);
+%                     eTemp = e;
+%                     e = d;
+%                     if abs(p) >= abs(0.5 * q * eTemp) | p <= (q * (a - x)) | p >= (q * (b-x))
+%                         % take the golden step into the larger of the segments
+%                         if x > xm
+%                             e = a - x;
+%                         else
+%                             e = b - x;
+%                         end
+%                         d = kCGold * e;
+%                     else
+%                         % parabolic step
+%                         d = p / q;
+%                         u = x + d;
+%                         if u-a < tol2 || b-u < tol2
+%                             d = abs(tol1);
+%                             if x > xm; d = -d; end
+%                         end
+%                     end
+%                 else
+%                     % take the golden step into the larger of the segments
+%                     if x > xm
+%                         e = a - x;
+%                     else
+%                         e = b - x;
+%                     end
+%                     d = kCGold * e;
+%                 end
+%                 % make the move
+%                 if abs(d) > tol1
+%                     u = x + d;
+%                 else
+%                     if d > 0
+%                         u = x + abs(tol1);
+%                     else
+%                         u = x - abs(tol1);
+%                     end
+%                 end
+%                 [fu] = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+%                 
+%                 % decrease the size of the bracket
+%                 if fu <= fx
+%                     if u >= x
+%                         a = x;
+%                     else
+%                         b = x;
+%                     end
+%                     v = w;
+%                     w = x;
+%                     x = u;
+%                     fv = fw;
+%                     fw = fx;
+%                     fx = fu;
+%                 else
+%                     if u < x
+%                         a = u;
+%                     else
+%                         b = u;
+%                     end
+%                     if fu<=fw | w==x
+%                         v = w;
+%                         w = u;
+%                         fv = fw;
+%                         fw = fu;
+%                     else
+%                         if fu <= fv | v == x
+%                             v = u;
+%                             fv = fu;
+%                         end
+%                     end
+%                 end
+%             end
+%             
+%             warning('OFT.MinimizeFn1D did not find minimum in 100 iterations')
+%             
+%             xMin = x;
+%             minSizeOfResidual = fx;
+%          end
+%          %--------------------
+%          function [dirnW, nuGuessW, minSizeOfResidual] = MinimizeAcfAlongOneDirn (obj, dirnW, nuGuessW, nuMaxCW, ts)
+%             %- Minimizes absolute deviation along the line (dirnW) in frequency space that goes thru the starting nuGuessW.
+%             %  Updates nuGuessW with the minimum found, and rescales dirnW using the minimum found.
+%             %- Based on the "linmin" routine from "Numerical Recipes in C", Press et al, 1988, page 316.
+%             %- Initial value of bx chosen so that on first run after using DFT peaks to estimate nuGuessW,
+%             %  BracketGuess1D will initally guess cx = -1, or 1 distance in frequency space. Should be guaranteed by
+%             %  DFT peak checking.
+%             %- In:  nuGuessW[1..nFreqsW]  is a point in argument space
+%             %       dirnW   [1..nFreqsW]  is a direction in argument space
+%             %- Out: nuGuessW[1..nFreqsW]  minimizes ResidualForMultipleFreqs along line from nuGuessW in direction dirnW
+%             %       dirnW   [1..nFreqsW]  = output nuGuessW - input nuGuessW
+%             %       minSizeOfResidual     = ResidualForMultipleFreqs(output nuGuessW), the best acheived
+%             
+%             [ax,bx,cx,foundMinimum,xMin,minSizeOfResidual] = obj.AcfBracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
+%             if ~foundMinimum
+%                 [xMin, minSizeOfResidual] = obj.MinimizeAcf1D(ax, bx, cx, nuGuessW, dirnW, ts);
+%             end
+%             
+%             for i = 1:length(nuGuessW)
+%                 dirnW(i) = dirnW(i) * xMin;
+%                 nuGuessW(i) = nuGuessW(i) + dirnW(i);
+%                 if nuGuessW(i) < 0; nuGuessW(i) = 0; end
+%                 if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMaxCW; end
+%             end
+%         end
+%          %--------------------
+%          function [nuGuessW] = MinimizeAcfByVaryingMultipleFreqs(obj, tsStage, nuGuessW, nuMaxCW)
+%             %- Minimizes AutoCorrFuncForMultipleFreqs of nFreqsW variables.
+%             %- Based on the "powell" routine from "Numerical Recipes in C", Press et al, 1988, pages 314-315,
+%             %  with func = AutoCorrFuncForMultipleFreqs.
+%             %- In:   nuGuessW[1..nFreqsW]             Initial frequencies.
+%             %- Out:  nuGuessW[1..nFreqsW]             Frequencies that minimize AutoCorrFuncForMultipleFreqs
+%             %- Note: dirnSetW[1..nFreqsW][1..nFreqsW] Latest set of directions. Starts with unit directions.
+%             %        fRet                             AutoCorrFuncForMultipleFreqs(latest nuGuessW), the best acheived so far.
+%             %- Finish when an iteration fails to reduce AutoCorrFuncForMultipleFreqs by ktolMinMulti, relatively.
+%             
+%             % Constants
+%             %ktolMinMulti = 0.00000005;
+%             ktolMinMulti = 0.05;
+%                                     
+%             nNu = length(nuGuessW);
+%             [sumAbsAcf,~] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
+%             dirnSetW = zeros(obj.kMaxNFreqsAtOnceOFT,obj.kMaxNFreqsAtOnceOFT);
+%             nuGuessAtStOfIterW = zeros(1,nNu);
+%             for i = 1:nNu
+%                 nuGuessAtStOfIterW(i) = nuGuessW(i);  % Initialize the starting position
+%                 dirnSetW(i,i)=1;    % initialize to the basis vectors
+%             end
+%             
+%             iter = 0;
+%             while true
+%                                 
+%                 iter = iter + 1;
+%                 
+% %                 %___________DEBUG: CAPTURE TS AND RESIDUAL_______________
+% %                 obj.iterData(iter).num = iter;
+% %                 obj.iterData(iter).nuGuessW = nuGuessW;
+% %                 obj.iterData(iter).TS = tsStage;
+% %                 [cosPart, sinPart] = EstimateContainedSinusoids(tsStage, nuGuessW);
+% %                 [resid,~] = SubtractMultipleSinusoidsFromTS (tsStage,cosPart, sinPart, nuGuessW);
+% %                 obj.iterData(iter).Residual = resid;
+% %                 %________________________________________________________
+% 
+%                 
+%                 sumAbsAtStOfIter = sumAbsAcf;
+%                 biggestDecrease = 0;
+%                 dirnIxOfBiggestDecrease = 0;
+%                 dirnW = zeros(1,nNu);
+%                 for i=1:nNu
+%                     for j = 1:nNu
+%                         dirnW(j) = dirnSetW(j,i);
+%                     end
+% %                    dirnW = dirnSetW(:,i);
+%                     lastsumAbsAcf = sumAbsAcf;
+%                     [dirnW, nuGuessW, sumAbsAcf] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+%                     decrease = abs(lastsumAbsAcf - sumAbsAcf);
+%                     if decrease > biggestDecrease
+%                         biggestDecrease = decrease;
+%                         dirnIxOfBiggestDecrease = i;
+%                     end
+%                 end
+%                 
+%                 %_________DEBUG  TUNING____________________________________
+%                 % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
+%                 if obj.bWaitBar
+%                     fprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,sumAbsAtStOfIter - sumAbsAcf,ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbsAcf)) * 0.5);
+%                  end
+%                 %__________________________________________________________
+% 
+%                 % finish?                              
+%                 if abs(sumAbsAtStOfIter - sumAbsAcf) <= ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbsAcf)) * 0.5
+%                     return
+%                 end
+%                 
+%                 if iter >= 30
+%                     warning('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter)
+%                     return
+%                 end
+%                 
+%                 extrapolatedNuGuessW = zeros(1,length(nuGuessW));
+%                 for j=1:length(nuGuessW)
+%                     dirnW(j) = nuGuessW(j) -  nuGuessAtStOfIterW(j); % direction of change
+%                     extrapolatedNuGuessW(j) = nuGuessW(j) + dirnW(j);
+%                     if extrapolatedNuGuessW(j) < 0; extrapolatedNuGuessW(j)= 0; end
+%                     if extrapolatedNuGuessW(j) > nuMaxCW; extrapolatedNuGuessW(j)= nuMaxCW; end
+%                     nuGuessAtStOfIterW(j) = nuGuessW(j);
+%                 end
+%                 
+%                 [fExtrap] = obj.AutoCorrFuncForMultipleFreqs(tsStage, extrapolatedNuGuessW);
+%                 
+%                 if fExtrap < sumAbsAtStOfIter  % If extrapolated sum(abs(acf)) value is lower...
+%                     u = (sumAbsAtStOfIter - sumAbsAcf) - biggestDecrease;
+%                     v = sumAbsAtStOfIter - fExtrap;
+%                     T = 2 * (sumAbsAtStOfIter - 2 * sumAbsAcf + fExtrap) * u^2  - biggestDecrease * v^2;
+%                     if T < 0    % ...then change the direction in the direction set
+%                         [dirnW, nuGuessW, sumAbsAcf] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+%                         for j = 1:length(nuGuessW)
+%                             dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
+%                         end
+%                     end
+%                     
+%                 end
+%             end
+%          end
+     
+     end    
+     %**********************Kurtosis Methods*********************************
+     % Kurtosis
+     methods (Access = public)
+         function y=krt(~,x)
+             y=(mean(x.^4)-3*(mean(x.^2))^2);
+         end
+         %--------------------
+         function y=robkrt(obj,x)    % more robust kurtosis
+             Krt = obj.krt(x);
+             y=(1/12)*((mean(x.^3))^2)+(1/48)*(Krt)^2;
+         end
+         %--------------------
+         function Krt = KrtForMultipleFreqs(obj, ts, nu)
              %- The m-function, i.e. the function to be minimized in searching for the nFreqsW sinusoids whose removal
              %  most reduces the absolute deviation of the time series.
              [cosPart, sinPart] = EstimateContainedSinusoids(ts, nu);
-             [ts,~] = SubtractMultipleSinusoidsFromTS (ts,cosPart, sinPart, nu);             
-             [sumAbs,maxAbs,acf] = obj.SumAbsACF(ts);
-%              DEBUG and Tuning Plot--------------------------------------
-%              if ishandle(obj.Fig1)
-%                  figure(obj.Fig1)
-%                  subplot(3,1,2)
-%                  plot(ts)
-%                  title('Autocorr Residual')
-%                  subplot(3,1,3)
-%                  stem(acf(2:end));
-%                  title('Auto Correlation Function')
-%                  drawnow
-%              end
-%              ------------------------------------------------------------
+             [ts,~] = SubtractMultipleSinusoidsFromTS (ts,cosPart, sinPart, nu);
+             Krt = obj.robkrt(ts);
+             %              DEBUG and Tuning Plot--------------------------------------
+             %              if ishandle(obj.Fig1)
+             %                  figure(obj.Fig1)
+             %                  subplot(3,1,2)
+             %                  plot(ts)
+             %                  title('Autocorr Residual')
+             %                  subplot(3,1,3)
+             %                  stem(acf(2:end));
+             %                  title('Auto Correlation Function')
+             %                  drawnow
+             %              end
+             %              ------------------------------------------------------------
              
          end
          %--------------------
-         function [sumAbs, maxAbs] = AutoCorrFuncAlongADirn (obj, x, nuGuessW, dirnW, ts)
+         function Krt = KrtAlongADirn (obj, x, nuGuessW, dirnW, ts)
              nuTryW = zeros(1,length(nuGuessW));
              for i=1:length(nuGuessW)
                  nuTryW(i) = nuGuessW(i) + x * dirnW(i);
              end
-             [sumAbs, maxAbs] = obj.AutoCorrFuncForMultipleFreqs(ts, nuTryW);
+             Krt = obj.KrtForMultipleFreqs(ts, nuTryW);
          end
          %--------------------
-         function [sumAbs, maxAbs,acf] = SumAbsACF(~, ts)
-             N = length(ts);
-             [acf] = ifft(abs(fft(ts, 2*N-1)).^2);          
-%              DEBUG and Tuning Plot--------------------------------------
-%              if ishandle(obj.Fig1)
-%                  figure(obj.Fig1)
-%                  subplot(3,1,3)
-%                  stem(acf(2:end));
-%                  title('Auto Correlation Function')
-%                  drawnow
-%              end
-%              ------------------------------------------------------------
-             
-             sumAbs = sum(abs(acf));
-             maxAbs = max(abs(acf));
-         end
-         %--------------------
-         function [ax,bx,cx,foundMinimum,xMin,fxMin] = AcfBracketGuess1D(obj, nuGuessW,dirnW, nuMaxCW, ts)
+         function [ax,bx,cx,foundMinimum,xMin,fxMin] = KrtBracketGuess1D(obj, nuGuessW,dirnW, nuMaxCW, ts)
              %- Concerns argument x to AutoCorrFuncAlongADirn, which then constructs a multivariable argument to
              %  ResidualForMultipleFreqs, namely nuGuessW(i) + x * dirnW(i). (So x = 0 corresponds to nuGuessW.)
              %- In:  -   (Implicitly: nuGuessW, AutoCorrFuncAlongADirn, FindValidLimits1D.)
@@ -1216,7 +1713,7 @@ classdef OFT_ACF
              %       xMin            Only set if foundMinimum. Value of x for the minimum.
              %       fxMin           Only set if foundMinimum. The minimum value.
              %- Based on the "mnbrak" routine from "Numerical Recipes in C", Press et al, 1988, page 297,
-             %  with func(x) = AutoCorrFuncAlongADirn(x).
+             %  with func(x) = KrtAlongADirn(x).
              %- Searches downhill from x = 0, starting with small steps (relative to the range of allowable values),
              %  taking larger and larger steps. If run into a limit, then search around a bit more near that limit.
              %  If the limit still appears to be the minimum, declare that as the minimum (because could not find
@@ -1241,22 +1738,22 @@ classdef OFT_ACF
              ax = 0;
              bx = kGoldLess1OP * scalor;
              cx = bx + kGold * (bx - ax);
-             %----------------------                    
+             %----------------------
              
              foundMinimum = false;
-%             [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
+             %             [lo, hi]=obj.FindValidLimits1D(nuGuessW,dirnW,nuMaxCW-1);
              if lo >= hi
                  foundMinimum = true;
                  xMin = lo;
-                 [fxMin] = obj.AutoCorrFuncAlongADirn(xMin, nuGuessW, dirnW, ts);
+                 [fxMin] = obj.KrtAlongADirn(xMin, nuGuessW, dirnW, ts);
                  return
              end
              
-%             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
+             %             scalor = (hi - lo)/kScale;   %Multiply by scalor to give a range of kScale
              
              % initial guess for a and b
-%              ax = 0;
-%              bx = kGoldLess1OP * scalor;
+             %              ax = 0;
+             %              bx = kGoldLess1OP * scalor;
              % ensure a and b are valid directional moves
              if ax < lo; ax = lo; end
              if ax > hi; ax = hi; end
@@ -1272,8 +1769,8 @@ classdef OFT_ACF
              end
              
              % ensure a -> b is downhill
-             fa = obj.AutoCorrFuncAlongADirn(ax, nuGuessW, dirnW, ts);
-             fb = obj.AutoCorrFuncAlongADirn(bx, nuGuessW, dirnW, ts);
+             fa = obj.KrtAlongADirn(ax, nuGuessW, dirnW, ts);
+             fb = obj.KrtAlongADirn(bx, nuGuessW, dirnW, ts);
              if fb > fa      %a <--> b
                  temp = ax;
                  ax = bx;
@@ -1284,22 +1781,22 @@ classdef OFT_ACF
              end
              
              %initial guess for c
-%             cx = bx + kGold * (bx - ax);
+             cx = bx + kGold * (bx - ax);
              if cx < lo; cx = lo; end
              if cx > hi; cx = hi; end
-             fc = obj.AutoCorrFuncAlongADirn(cx, nuGuessW, dirnW, ts);
+             fc = obj.KrtAlongADirn(cx, nuGuessW, dirnW, ts);
              
              % have a new c (i.e. cx and fc)
              while true
                  if fc - fb > 1e-10 * abs(fc)
-                     return 
+                     return
                  end    % exit if b -> is uphill
                  
                  % exit is c is up against a limit
                  if cx == lo || cx == hi
                      while abs(cx - bx) > kLimitTol * scalor
                          u = 0.5 * (bx + cx);
-                         fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                         fu = obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                          if fc - fu > 1e-9 * abs(fc)
                              ax = bx;
                              bx = u;
@@ -1335,7 +1832,7 @@ classdef OFT_ACF
                  
                  % u in (bx, cx)
                  if (bx - u) * (u - cx) > 0
-                     fu =  obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                     fu =  obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                      if fu < fc  %b->a, u->b, return
                          ax = bx;
                          bx = u;
@@ -1349,7 +1846,7 @@ classdef OFT_ACF
                  else
                      % u in (cx, ulim)
                      if (cx - u) * (u - ulim) > 0
-                         fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                         fu = obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                          if fu < fc % c->b, u->c
                              bx = cx;
                              cx = u;
@@ -1361,7 +1858,7 @@ classdef OFT_ACF
                          % ulim in (cx, u)
                          if (u - ulim) * (ulim - cx) >= 0
                              u = ulim;
-                             fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                             fu = obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                          else
                              takeDefault = true;
                          end
@@ -1372,7 +1869,7 @@ classdef OFT_ACF
                      u = cx + kGold * (cx - bx);
                      if u < lo; u = lo; end
                      if u > hi; u = hi; end
-                     fu = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                     fu = obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                  end
                  
                  ax = bx;
@@ -1384,7 +1881,7 @@ classdef OFT_ACF
              end
          end
          %--------------------
-         function [xMin, minSizeOfResidual] = MinimizeAcf1D(obj, ax, bx, cx, nuGuessW, dirnW, ts)
+         function [xMin, minSizeOfResidual] = MinimizeKrt1D(obj, ax, bx, cx, nuGuessW, dirnW, ts)
             %- Brent's method for finding the minimum value of a function of one variable.
             %- Sets xMin to the value of x between ax and cx that mimimizes AutoCorrFuncAlongADirn.
             %- Requires either ax < bx < cx or ax > bx > cx, and
@@ -1414,7 +1911,7 @@ classdef OFT_ACF
             x = bx;     %x will be the point with the lowest fn value found so far
             w = bx;     % w is the point with the 2nd lowest fn value found so far
             v = bx;     % v is the point with the 3rd lowest fn value found so far
-            fx = obj.AutoCorrFuncAlongADirn(x, nuGuessW, dirnW, ts);
+            fx = obj.KrtAlongADirn(x, nuGuessW, dirnW, ts);
             fv = fx;
             fw = fx;
             d = 0;
@@ -1474,7 +1971,7 @@ classdef OFT_ACF
                         u = x - abs(tol1);
                     end
                 end
-                [fu] = obj.AutoCorrFuncAlongADirn(u, nuGuessW, dirnW, ts);
+                [fu] = obj.KrtAlongADirn(u, nuGuessW, dirnW, ts);
                 
                 % decrease the size of the bracket
                 if fu <= fx
@@ -1515,132 +2012,128 @@ classdef OFT_ACF
             minSizeOfResidual = fx;
          end
          %--------------------
-         function [dirnW, nuGuessW, minSizeOfResidual] = MinimizeAcfAlongOneDirn (obj, dirnW, nuGuessW, nuMaxCW, ts)
-            %- Minimizes absolute deviation along the line (dirnW) in frequency space that goes thru the starting nuGuessW.
-            %  Updates nuGuessW with the minimum found, and rescales dirnW using the minimum found.
-            %- Based on the "linmin" routine from "Numerical Recipes in C", Press et al, 1988, page 316.
-            %- Initial value of bx chosen so that on first run after using DFT peaks to estimate nuGuessW,
-            %  BracketGuess1D will initally guess cx = -1, or 1 distance in frequency space. Should be guaranteed by
-            %  DFT peak checking.
-            %- In:  nuGuessW[1..nFreqsW]  is a point in argument space
-            %       dirnW   [1..nFreqsW]  is a direction in argument space
-            %- Out: nuGuessW[1..nFreqsW]  minimizes ResidualForMultipleFreqs along line from nuGuessW in direction dirnW
-            %       dirnW   [1..nFreqsW]  = output nuGuessW - input nuGuessW
-            %       minSizeOfResidual     = ResidualForMultipleFreqs(output nuGuessW), the best acheived
-            
-            [ax,bx,cx,foundMinimum,xMin,minSizeOfResidual] = obj.AcfBracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
-            if ~foundMinimum
-                [xMin, minSizeOfResidual] = obj.MinimizeAcf1D(ax, bx, cx, nuGuessW, dirnW, ts);
-            end
-            
-            for i = 1:length(nuGuessW)
-                dirnW(i) = dirnW(i) * xMin;
-                nuGuessW(i) = nuGuessW(i) + dirnW(i);
-                if nuGuessW(i) < 0; nuGuessW(i) = 0; end
-                if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMaxCW; end
-            end
-        end
-         %--------------------
-         function [nuGuessW] = MinimizeAcfByVaryingMultipleFreqs(obj, tsStage, nuGuessW, nuMaxCW)
-            %- Minimizes AutoCorrFuncForMultipleFreqs of nFreqsW variables.
-            %- Based on the "powell" routine from "Numerical Recipes in C", Press et al, 1988, pages 314-315,
-            %  with func = AutoCorrFuncForMultipleFreqs.
-            %- In:   nuGuessW[1..nFreqsW]             Initial frequencies.
-            %- Out:  nuGuessW[1..nFreqsW]             Frequencies that minimize AutoCorrFuncForMultipleFreqs
-            %- Note: dirnSetW[1..nFreqsW][1..nFreqsW] Latest set of directions. Starts with unit directions.
-            %        fRet                             AutoCorrFuncForMultipleFreqs(latest nuGuessW), the best acheived so far.
-            %- Finish when an iteration fails to reduce AutoCorrFuncForMultipleFreqs by ktolMinMulti, relatively.
-            
-            % Constants
-            %ktolMinMulti = 0.00000005;
-            ktolMinMulti = 0.05;
-                                    
-            nNu = length(nuGuessW);
-            [sumAbsAcf,~] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
-            dirnSetW = zeros(obj.kMaxNFreqsAtOnceOFT,obj.kMaxNFreqsAtOnceOFT);
-            nuGuessAtStOfIterW = zeros(1,nNu);
-            for i = 1:nNu
-                nuGuessAtStOfIterW(i) = nuGuessW(i);  % Initialize the starting position
-                dirnSetW(i,i)=1;    % initialize to the basis vectors
-            end
-            
-            iter = 0;
-            while true
-                                
-                iter = iter + 1;
-                
-%                 %___________DEBUG: CAPTURE TS AND RESIDUAL_______________
-%                 obj.iterData(iter).num = iter;
-%                 obj.iterData(iter).nuGuessW = nuGuessW;
-%                 obj.iterData(iter).TS = tsStage;
-%                 [cosPart, sinPart] = EstimateContainedSinusoids(tsStage, nuGuessW);
-%                 [resid,~] = SubtractMultipleSinusoidsFromTS (tsStage,cosPart, sinPart, nuGuessW);
-%                 obj.iterData(iter).Residual = resid;
-%                 %________________________________________________________
-
-                
-                sumAbsAtStOfIter = sumAbsAcf;
-                biggestDecrease = 0;
-                dirnIxOfBiggestDecrease = 0;
-                dirnW = zeros(1,nNu);
-                for i=1:nNu
-                    for j = 1:nNu
-                        dirnW(j) = dirnSetW(j,i);
-                    end
-%                    dirnW = dirnSetW(:,i);
-                    lastsumAbsAcf = sumAbsAcf;
-                    [dirnW, nuGuessW, sumAbsAcf] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
-                    decrease = abs(lastsumAbsAcf - sumAbsAcf);
-                    if decrease > biggestDecrease
-                        biggestDecrease = decrease;
-                        dirnIxOfBiggestDecrease = i;
-                    end
-                end
-                
-                %_________DEBUG  TUNING____________________________________
-                % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
-                if obj.bWaitBar
-                    fprintf('iter %d: AcfDiff = %e, Threshold = %e',iter,sumAbsAtStOfIter - sumAbsAcf,ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbsAcf)) * 0.5);
-                 end
-                %__________________________________________________________
-
-                % finish?                              
-                if abs(sumAbsAtStOfIter - sumAbsAcf) <= ktolMinMulti * (abs(sumAbsAtStOfIter) + abs(sumAbsAcf)) * 0.5
-                    return
-                end
-                
-                if iter >= 30
-                    warning('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter)
-                    return
-                end
-                
-                extrapolatedNuGuessW = zeros(1,length(nuGuessW));
-                for j=1:length(nuGuessW)
-                    dirnW(j) = nuGuessW(j) -  nuGuessAtStOfIterW(j); % direction of change
-                    extrapolatedNuGuessW(j) = nuGuessW(j) + dirnW(j);
-                    if extrapolatedNuGuessW(j) < 0; extrapolatedNuGuessW(j)= 0; end
-                    if extrapolatedNuGuessW(j) > nuMaxCW; extrapolatedNuGuessW(j)= nuMaxCW; end
-                    nuGuessAtStOfIterW(j) = nuGuessW(j);
-                end
-                
-                [fExtrap] = obj.AutoCorrFuncForMultipleFreqs(tsStage, extrapolatedNuGuessW);
-                
-                if fExtrap < sumAbsAtStOfIter  % If extrapolated sum(abs(acf)) value is lower...
-                    u = (sumAbsAtStOfIter - sumAbsAcf) - biggestDecrease;
-                    v = sumAbsAtStOfIter - fExtrap;
-                    T = 2 * (sumAbsAtStOfIter - 2 * sumAbsAcf + fExtrap) * u^2  - biggestDecrease * v^2;
-                    if T < 0    % ...then change the direction in the direction set
-                        [dirnW, nuGuessW, sumAbsAcf] = obj.MinimizeAcfAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
-                        for j = 1:length(nuGuessW)
-                            dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
-                        end
-                    end
-                    
-                end
-            end
+         function [dirnW, nuGuessW, minKrt] = MinimizeKrtAlongOneDirn (obj, dirnW, nuGuessW, nuMaxCW, ts)
+             %- Minimizes absolute deviation along the line (dirnW) in frequency space that goes thru the starting nuGuessW.
+             %  Updates nuGuessW with the minimum found, and rescales dirnW using the minimum found.
+             %- Based on the "linmin" routine from "Numerical Recipes in C", Press et al, 1988, page 316.
+             %- Initial value of bx chosen so that on first run after using DFT peaks to estimate nuGuessW,
+             %  BracketGuess1D will initally guess cx = -1, or 1 distance in frequency space. Should be guaranteed by
+             %  DFT peak checking.
+             %- In:  nuGuessW[1..nFreqsW]  is a point in argument space
+             %       dirnW   [1..nFreqsW]  is a direction in argument space
+             %- Out: nuGuessW[1..nFreqsW]  minimizes ResidualForMultipleFreqs along line from nuGuessW in direction dirnW
+             %       dirnW   [1..nFreqsW]  = output nuGuessW - input nuGuessW
+             %       minSizeOfResidual     = ResidualForMultipleFreqs(output nuGuessW), the best acheived
+             
+             [ax,bx,cx,foundMinimum,xMin,minKrt] = obj.KrtBracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
+             if ~foundMinimum
+                 [xMin, minKrt] = obj.MinimizeKrt1D(ax, bx, cx, nuGuessW, dirnW, ts);
+             end
+             
+             for i = 1:length(nuGuessW)
+                 dirnW(i) = dirnW(i) * xMin;
+                 nuGuessW(i) = nuGuessW(i) + dirnW(i);
+                 if nuGuessW(i) < 0; nuGuessW(i) = 0; end
+                 if nuGuessW(i) > nuMaxCW; nuGuessW(i) = nuMaxCW; end
+             end
          end
-     
+         %--------------------
+         function [nuGuessW] = MinimizeKrtByVaryingMultipleFreqs(obj, tsStage, nuGuessW, nuMaxCW)
+             %- Minimizes KtrForMultipleFreqs of nFreqsW variables.
+             %- Based on the "powell" routine from "Numerical Recipes in C", Press et al, 1988, pages 314-315,
+             %  with func = AutoCorrFuncForMultipleFreqs.
+             %- In:   nuGuessW[1..nFreqsW]             Initial frequencies.
+             %- Out:  nuGuessW[1..nFreqsW]             Frequencies that minimize AutoCorrFuncForMultipleFreqs
+             %- Note: dirnSetW[1..nFreqsW][1..nFreqsW] Latest set of directions. Starts with unit directions.
+             %        fRet                             AutoCorrFuncForMultipleFreqs(latest nuGuessW), the best acheived so far.
+             %- Finish when an iteration fails to reduce AutoCorrFuncForMultipleFreqs by ktolMinMulti, relatively.
+             
+             % Constants
+             %ktolMinMulti = 0.00000005;
+             ktolMinMulti = 0.05;
+             
+             nNu = length(nuGuessW);
+             Krt = obj.KrtForMultipleFreqs(tsStage,nuGuessW);
+             %            [sumAbsAcf,~] = obj.AutoCorrFuncForMultipleFreqs(tsStage, nuGuessW); % initial f(x)
+             dirnSetW = zeros(obj.kMaxNFreqsAtOnceOFT,obj.kMaxNFreqsAtOnceOFT);
+             nuGuessAtStOfIterW = zeros(1,nNu);
+             for i = 1:nNu
+                 nuGuessAtStOfIterW(i) = nuGuessW(i);  % Initialize the starting position
+                 dirnSetW(i,i)=1;    % initialize to the basis vectors
+             end
+             
+             iter = 0;
+             while true
+                 
+                 iter = iter + 1;
+                 
+                 %                 %___________DEBUG: CAPTURE TS AND RESIDUAL_______________
+                 %                 obj.iterData(iter).num = iter;
+                 %                 obj.iterData(iter).nuGuessW = nuGuessW;
+                 %                 obj.iterData(iter).TS = tsStage;
+                 %                 [cosPart, sinPart] = EstimateContainedSinusoids(tsStage, nuGuessW);
+                 %                 [resid,~] = SubtractMultipleSinusoidsFromTS (tsStage,cosPart, sinPart, nuGuessW);
+                 %                 obj.iterData(iter).Residual = resid;
+                 %                 %________________________________________________________
+                 
+                 KrtAtStOfIter = Krt;
+                 biggestDecrease = 0;
+                 dirnIxOfBiggestDecrease = 0;
+                 dirnW = zeros(1,nNu);
+                 for i=1:nNu
+                     for j = 1:nNu
+                         dirnW(j) = dirnSetW(j,i);
+                     end
+                     lastKrt = Krt;
+                     [dirnW, nuGuessW, Krt] = obj.MinimizeKrtAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                     decrease = abs(lastKrt - Krt);
+                     if decrease > biggestDecrease
+                         biggestDecrease = decrease;
+                         dirnIxOfBiggestDecrease = i;
+                     end
+                 end
+                 
+                 %_________DEBUG  TUNING____________________________________
+                 % TUNING: UNCOMMENT FOR USE WITH TUNING THE THRESHOLD
+                 if obj.bWaitBar
+                     fprintf('iter %d: KrtDiff = %e, Threshold = %e\n ',iter,KrtAtStOfIter - Krt,ktolMinMulti * (abs(KrtAtStOfIter) + abs(Krt)) * 0.5);
+                 end
+                 %__________________________________________________________
+                 
+                 % finish?
+                 if abs(KrtAtStOfIter - Krt) <= ktolMinMulti * (abs(KrtAtStOfIter) + abs(Krt)) * 0.5
+                     return
+                 end
+                 
+                 if iter >= 30
+                     warning('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter)
+                     return
+                 end
+                 
+                 extrapolatedNuGuessW = zeros(1,length(nuGuessW));
+                 for j=1:length(nuGuessW)
+                     dirnW(j) = nuGuessW(j) -  nuGuessAtStOfIterW(j); % direction of change
+                     extrapolatedNuGuessW(j) = nuGuessW(j) + dirnW(j);
+                     if extrapolatedNuGuessW(j) < 0; extrapolatedNuGuessW(j)= 0; end
+                     if extrapolatedNuGuessW(j) > nuMaxCW; extrapolatedNuGuessW(j)= nuMaxCW; end
+                     nuGuessAtStOfIterW(j) = nuGuessW(j);
+                 end
+                 
+                 [fExtrap] = obj.KrtForMultipleFreqs(tsStage, extrapolatedNuGuessW);
+                 if fExtrap < KrtAtStOfIter  % If extrapolated sum(abs(acf)) value is lower...
+                     u = (KrtAtStOfIter - Krt) - biggestDecrease;
+                     v = KrtAtStOfIter - fExtrap;
+                     T = 2 * (KrtAtStOfIter - 2 * Krt + fExtrap) * u^2  - biggestDecrease * v^2;
+                     if T < 0    % ...then change the direction in the direction set
+                         [dirnW, nuGuessW, Krt] = obj.MinimizeKrtAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                         for j = 1:length(nuGuessW)
+                             dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
+                         end
+                     end
+                 end
+             end
+         end
      end
-     %*********************************************************************
+
 end
 

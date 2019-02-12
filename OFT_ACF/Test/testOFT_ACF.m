@@ -23,9 +23,10 @@ classdef testOFT_ACF < matlab.unittest.TestCase
             testCase.bDoRecon = true;
             testCase.bDoAcf = false;
             % comment out any line below to skip those tests
+              testConstructor (testCase)
 %             testNyquist (testCase)
 %             testNearDC (testCase)
-             testLab (testCase)
+%             testLab (testCase)
 %             testACF (testCase)
 %             test50_45 (testCase)
         end

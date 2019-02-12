@@ -1,5 +1,20 @@
 classdef ArtificialTS
     % Class for synthesizing a time series from sinusoids and noise
+    % Name-Value Property Pairs  (default value)
+    %   Name ()
+    %   Description ()
+    %   T0  (0) start time
+    %   Extent (0) duration of TS
+    %   nSamples (0) number of samples (must be integer type)
+    %   Freqs () array of frequencies
+    %   Amps () array of amplitudes
+    %   Phases () array of phases
+    %   NoiseUniformLow (0) scalor, uniform noise low value
+    %   NoiseUniformHi (0) scalor, uniform noise high value
+    %   NoiseGaussMean (0) scalor, normal noise mean value
+    %   NoiseGaussSD (0) scalor, normal noise standard distribution
+    %   rngState (-1) random number generator state.
+
     properties
         Name            % string name of the Time Series
         Description     % string describing the TS
@@ -17,6 +32,7 @@ classdef ArtificialTS
         NoiseUniformHi  % double Uniform distribution noise highest value
         NoiseGaussMean  % double noise mean value
         NoiseGaussSD    % double noise standard deviation
+        RngState = -1   % state of the random number generator.  -1 means no initial state
         noiseTs         % a time series containing only the additive noise.
         
         Ts              % Time Series
@@ -25,39 +41,66 @@ classdef ArtificialTS
     
     methods
         %Constructor
-        function ArtTS = ArtificialTS( ...
-                Name, ...
-                Description, ...
-                T0, ...
-                Extent, ...
-                nSamples, ...
-                Freqs, ...
-                Amps, ...
-                Phases, ...
-                NoiseUniformLow, ...
-                NoiseUniformHi, ...
-                NoiseGaussMean, ...
-                NoiseGaussSD ...
-                )
-            if nargin > 0
-               ArtTS.Name = Name;
-               ArtTS.Description = Description;
-               ArtTS.T0 = T0;
-               ArtTS.Extent = Extent;
-               ArtTS.nSamples = int32(nSamples);
-               ArtTS.Freqs = Freqs;
-               ArtTS.Amps = Amps;
-               ArtTS.Phases = Phases;
-               ArtTS.NoiseUniformLow = NoiseUniformLow;
-               ArtTS.NoiseUniformHi = NoiseUniformHi;
-               ArtTS.NoiseGaussMean = NoiseGaussMean;
-               ArtTS.NoiseGaussSD = NoiseGaussSD;
-                              
-               ArtTS.Valid = ArtTS.checkValid;
-               ArtTS.time = ArtTS.makeTime.time;    % create the time vector
-               ArtTS.Ts = ArtTS.makeTS.Ts;      % create the time series   
-            end            
+        function ArtTS = ArtificialTS(varargin)
+            
+            
+            defaultName = 'Time series';
+            defaultDescription = '';
+            defaultT0 = 0;
+            defaultExtent = 5;
+            defaultnSamples = int32(300);
+            defaultFreqs = [1];
+            defaultAmps = [1];
+            defaultPhases = [0];
+            defaultNoiseUniformLow = 0;
+            defaultNoiseUniformHi = 0;
+            defaultNoiseGaussMean = 0;
+            defaultNoiseGaussSD = 0;
+            defaultRngState = -1;
+            
+            p = inputParser;
+            
+            % validation
+            validScalar = @(x) isnumeric(x) && isscalar(x);
+            validScalarPosNum = @(x) isnumeric(x) && isscalar(x) && (x > 0);
+            validScalarPosInt = @(x) isnumeric(x) && isscalar(x) && isinteger(x) && (x > 0);
+            
+            
+            addParameter(p,'Name',defaultName,@ischar)
+            addParameter(p,'Description',defaultDescription,@ischar)
+            addOptional(p,'T0',defaultT0,validScalar);
+            addOptional(p,'Extent',defaultExtent,validScalarPosNum);
+            addOptional(p,'nSamples',defaultnSamples,validScalarPosInt);
+            addOptional(p,'Freqs',defaultFreqs,@isvector);
+            addOptional(p,'Amps',defaultAmps,@isvector);
+            addOptional(p,'Phases',defaultPhases,@isvector);
+            addOptional(p,'NoiseUniformLow',defaultNoiseUniformLow,validScalar);
+            addOptional(p,'NoiseUniformHi',defaultNoiseUniformHi,validScalar);
+            addOptional(p,'NoiseGaussMean',defaultNoiseGaussMean,validScalar);
+            addOptional(p,'NoiseGaussSD',defaultNoiseGaussSD,validScalar);
+            addOptional(p,'RngState',defaultRngState);
+            
+            
+            parse(p,varargin{:})
+            ArtTS.Name = p.Results.Name;
+            ArtTS.Description = p.Results.Description;
+            ArtTS.T0 = p.Results.T0;
+            ArtTS.Extent = p.Results.Extent;
+            ArtTS.nSamples = p.Results.nSamples;
+            ArtTS.Freqs = p.Results.Freqs;
+            ArtTS.Amps = p.Results.Amps;
+            ArtTS.Phases = p.Results.Phases;
+            ArtTS.NoiseUniformLow = p.Results.NoiseUniformLow;
+            ArtTS.NoiseUniformHi = p.Results.NoiseUniformHi;
+            ArtTS.NoiseGaussMean = p.Results.NoiseGaussMean;
+            ArtTS.NoiseGaussSD = p.Results.NoiseGaussSD;
+            ArtTS.RngState = p.Results.RngState;
+            
+            ArtTS.Valid = ArtTS.checkValid;
+            ArtTS.time = ArtTS.makeTime.time;    % create the time vector
+            ArtTS.Ts = ArtTS.makeTS.Ts;      % create the time series
         end
+        
        
         function Valid = checkValid(ArtTS)
             Valid = false;
@@ -102,6 +145,7 @@ classdef ArtificialTS
                 bNoiseOn = true;
             end
             if bNoiseOn
+                if isstruct(ArtTS.RngState), rng(ArtTS.RngState); end
                 ArtTS.noiseTs = ...
                     ArtTS.NoiseGaussSD * randn(size(x))...
                     + ArtTS.NoiseGaussMean ...

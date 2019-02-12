@@ -4,57 +4,140 @@ classdef OFT
     % written by: Dr David Evans
     %             david.evans@sciencespeak.com
     %**********************************************************************
-    % Class constructor inputs (bWaitBar,kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
-    %   -bWaitBar(false): if TRUE, show Stage and Pass progress plus plot 
-    %    current working time series, current guess, and residual
-    %   -kMaxNFreqsAtOnceOFT (10): number of frequencies to estimate for
-    %   each stage;
-    %   -kMaxNStages(2): maximim number of stages to run
-    %   -relativeAbsDev(.000001):  OFT stops finding new frequencies if the
-    %   absolute deviation (after sinusoids found so far are removed) 
-    %   drops to this fraction of the absolute deviation of ts.
+    % function obj = OFT(optFunc, varargin)
+       % Constructor uses the matlab inputParser object to accept
+       % name-value property pairs:            
+            % -optFunc (required):
+                % 'optFunc','dev': optimize on signal deviation (total energy)
+                % 'optFunc','acf': optimize on autocorrelation function
+                % 'optFunc','kur': optimize on kurtosis
+            % -bWaitBar (boolean): show the status bar and plot internal timseries
+            % -bDoRecon (boolean): perform a frequency reconassaince run
+                % before the main run
+            % -bPause (boolean): Pause between OFT runs
+            % -kThreshold (double): Threshold level of function being
+                 % optimized at which optimization stops
+            % -relativeVal (double): 
+            % -targetFraction (double):
+            % -minChangeTargetFraction (double): % The fraction of targetFraction
+                %to be used as a threshold to end OneStageACF
     %**********************************************************************            
     
     properties (Access = public)
-        bWaitBar = false;       
+        optFunc = 'dev';
+        bWaitBar = false; 
+        bPause = false;
         bDoRecon = true;
-        
-        relativeAbsDev = .000001;
-        maxNFreqsPerStage = 10;
+        Fig1 = [];
 
         % constants
-        kMaxNFreqsAtOnceOFT = 10;
-        kMaxNStages = 2;
-        kMinChangeTargetAbsDevFraction = 0.0001;
-        kMaxNFreqsPerStage;
         kNuConsolidate = 0.1;   % How close should frequencies be allowed to get before they are consolidated
-        kRemoveFraction = 1e-9;
-
-    end
-    
-    properties (Access = private)
-        Fig1 = [];
-        stageN = 0;
-        targetAbsDevW;
-        minChangeAbsDevW;
+        kRemoveFraction = 1e-9; % all frequencies with squared amplitudes lower than the product of the second highest amplitude squared and kRemoveFraction will be removed
+        kMaxNFreqsPerStage = 10;
+        kMaxNFreqsAtOnceOFT = 10;
+        kMaxNStages = 5;
+        
+        %tuning parameters
+        kOfPeakThreshold = 0.005;
+        relativeFx = 0.000001;
+      %  targetFraction = 1e-6;
+        kMinChangeTargetFxFraction = 0.0001;
+        kTolMinMulti = 0.005;
+       
         
     end
+    
+    properties (Access = public)
+        stageN = 0;
+        targetFx;
+        minChangeFx;
+        maxNFreqsPerStage;
+        hFx     % function handle to function of x being minimized
+    end
+    
     
     methods (Access = public)
-        % constructor
-        function obj = OFT(bWaitBar, bDoRecon, kMaxNFreqsAtOnceOFT, kMaxNStages, relativeAbsDev)
-            if nargin > 0
-                % default values
-                obj.bWaitBar = bWaitBar;
-                obj.bDoRecon = bDoRecon;
-                obj.kMaxNFreqsAtOnceOFT = kMaxNFreqsAtOnceOFT;
-                obj.kMaxNStages = kMaxNStages;
-                obj.relativeAbsDev = relativeAbsDev;
+        % CONSTRUCTOR
+        function obj = OFT(optFunc, varargin)
+            % Constructor uses the matlab inputParser object to accept
+            % name-value property pairs:
+            % optFunc (required):
+            % 'optFunc','dev': optimize on signal deviation (total energy)
+            % 'optFunc','acf': optimize on autocorrelation function
+            % 'optFunc','kur': optimize on kurtosis
+            % bWaitBar (boolean): show the status bar and plot internal timseries
+            % bDoRecon (boolean): perform a frequency reconassaince run
+            % before the main run
+            % bPause (boolean): Pause between OFT runs
+            % kOfPeakThreshold (double): Threshold level of found sinusoids
+            % optimized at which optimization stops
+            % relativeVal (double):
+            % targetFraction (double):
+            % minChangeTargetFraction (double): % The fraction of targetFraction
+            %to be used as a threshold to end OneStageACF
+            expectedOptFunc = {'dev', 'acf', 'kur'};
+            defaultWaitBar = true;
+            defaultRecon = true;
+            defaultPause = false;
+            
+            % set default values depending on the type of optimization
+            switch optFunc
+                case 'acf'
+                    defaultThreshold = 1e-12; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
+                    defaultRelativeFx = 1e-5;
+      %              defaultTargetFraction = 1e-3;
+                    defaultMinChangeTargetFraction = 0.1;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
+                    defaultTolMinMulti = 0.05;
+                    defaultMaxNFreqsPerStage = 8;
+                case 'kur'
+                    defaultThreshold = 1e-8; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
+                    defaultRelativeFx = 1e-15;
+      %              defaultTargetFraction = 1e-6;
+                    defaultMinChangeTargetFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
+                    defaultTolMinMulti = 0.05;
+                    defaultMaxNFreqsPerStage = 8;                  
+                otherwise % 'dev'
+                    defaultThreshold = 0.005; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
+                    defaultRelativeFx = 0.000001;
+      %              defaultTargetFraction = 1e-6;
+                    defaultMinChangeTargetFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
+                    defaultTolMinMulti = 0.00000005;
+                    defaultMaxNFreqsPerStage = 10;
+                    
             end
-            obj.kMaxNFreqsPerStage = 3 * obj.kMaxNFreqsAtOnceOFT / 2;
+            
+            % instantiate inputParser
+            p = inputParser;
+            
+            % validation
+            validScalarPosNum = @(x) isnumeric(x) && isscalar(x) && (x > 0);
+            
+            addRequired(p, 'optFunc', @(x) any(validatestring(x, expectedOptFunc)));
+            addOptional(p,'bWaitBar',defaultWaitBar,@islogical)
+            addOptional(p,'bDoRecon',defaultRecon,@islogical)
+            addOptional(p,'bPause',defaultPause,@islogical)
+            addOptional(p,'kOfPeakThreshold', defaultThreshold, validScalarPosNum)
+            addOptional(p,'relativeFx', defaultRelativeFx, validScalarPosNum)
+      %      addOptional(p,'targetFraction', defaultTargetFraction, validScalarPosNum)
+            addOptional(p,'kMinChangeTargetFraction', defaultMinChangeTargetFraction, validScalarPosNum)
+            addOptional(p,'kTolMinMulti', defaultTolMinMulti, validScalarPosNum)
+            addOptional(p,'kMaxNFreqsPerStage',defaultMaxNFreqsPerStage, validScalarPosNum)
+            
+            parse(p,optFunc,varargin{:});
+            obj.optFunc = p.Results.optFunc;
+            obj.bWaitBar = p.Results.bWaitBar;
+            obj.bDoRecon = p.Results.bDoRecon;
+            obj.bPause = p.Results.bPause;
+            obj.kOfPeakThreshold = p.Results.kOfPeakThreshold;
+            obj.relativeFx = p.Results.relativeFx;
+      %      obj.targetFraction = p.Results.targetFraction;
+            obj.kMinChangeTargetFxFraction = p.Results.kMinChangeTargetFraction;
+            obj.kTolMinMulti =  p.Results.kTolMinMulti;
+            obj.kMaxNFreqsPerStage = p.Results.kMaxNFreqsPerStage;
             
         end
-        
+        % -----------------------------------------------------------------                    
+        % OFT Function:  The "main" routine called to calculate the OFT
         function [freqs, MFT_OFT, fracErr] = OFT_fn (obj, ts, time)
             % Ported from VBA by Allen Goldstein, NIST,
             % from: http://jonova.s3.amazonaws.com/cfa/climate.xlsm
@@ -79,45 +162,66 @@ classdef OFT
                 obj.Fig1 = figure(1);
             end
             
+            obj = obj.setFxHandle(obj.optFunc);
+            
             extent = time(end)+mean(diff(time))-time(1);
-            % Initial absolute deviation of the time series
-            absDevOfOriginalTS_W = AbsDevOfTS(ts,length(ts));
-            obj.targetAbsDevW = obj.relativeAbsDev * absDevOfOriginalTS_W;
-            obj.minChangeAbsDevW = obj.kMinChangeTargetAbsDevFraction * obj.targetAbsDevW;
+            % Initial Fx of the time series
+%             Fx = obj.hFx(ts);
+%             FxOfOriginalTS_W = Fx;
+            FxOfOriginalTS_W = obj.hFx(ts);
+            Fx = 0;
+            obj.targetFx = obj.relativeFx * FxOfOriginalTS_W;
+            obj.minChangeFx = obj.kMinChangeTargetFxFraction * obj.targetFx;
             
             % ts for the first stage
             tsStage = ts;
             freqStage = [];
             nFreqs = 0;
             
+            
             obj.waitBarOFT(0,'Starting First Stage')
             while obj.stageN < obj.kMaxNStages
                 obj.stageN = obj.stageN+1;
                 
-                [freqStage, MftStage] = obj.OneStageOfOFT(tsStage, extent, freqStage);
+                lastFx = Fx;
+                Fx = obj.hFx(tsStage);
+                % exit if the Fx is below the target Fx
+                if Fx < obj.targetFx
+                    break
+                end
+                % exit if the change in fx is below the minimum change
+                if abs(lastFx-Fx) < obj.minChangeFx
+                    break
+                end
+                
+                
+%                [freqStage, MftStage] = obj.OneStageOfOFT(tsStage, extent, freqStage);
+                [freqStage, MftStage] = obj.OneStageOfOFT(tsStage, extent);
 
                 if obj.stageN >=2
+                    % exit if spectrum of tsStage is "flat enough"
                     ampBiggest = abs(MftStage(1));
                     ampSmallest = abs(MftStage(length(freqStage)));
                     ratio = ampSmallest / ampBiggest;
-                    % exit if spectrum of tsStage is "flat enough"
-                    if ratio >= 0.4; break; end
-                end
+                    if ratio >= 0.4
+                        break
+                    end                   
+                 end
                 
                 % Append stage sinusoids to result
                 j = nFreqs;
                 nFreqs = nFreqs + length(freqStage);
-                nuStage = zeros(1,nFreqs);
+%                nuStage = zeros(1,nFreqs);
                 for i = 1:length(freqStage)
                     j = j + 1;
                     freqs(j) = freqStage(i);
                     MFT_OFT(j) = MftStage(i);
-                    nuStage(j) = freqStage(i) * extent;
-                end                
+%                    nuStage(j) = freqStage(i) * extent;
+                end  
+                nuStage = freqs * extent;
                 
                 % Compute the TS for the next stage
-                [tsStage, absDev] = SubtractMultipleSinusoidsFromTS (tsStage, real(MFT_OFT), imag(MFT_OFT), nuStage);
-                if absDev < obj.targetAbsDevW; break; end
+                [tsStage, ~] = SubtractMultipleSinusoidsFromTS (ts, real(MFT_OFT), imag(MFT_OFT), nuStage);
                 
                 obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
                 
@@ -128,7 +232,7 @@ classdef OFT
                 [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
             else
                 [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
-                fracErr = absDev / absDevOfOriginalTS_W;
+                fracErr = Fx / FxOfOriginalTS_W;
             end
             
             if ishandle(obj.Fig1)
@@ -143,7 +247,11 @@ classdef OFT
  %*********************PRIVATE METHODS ************************  
     methods (Access = private)
         %-----------------
-        function [freqStage, MftStage, fracErr] = OneStageOfOFT(obj, tsStage, extent, freqStage)
+%        function [freqStage, MftStage, fracErr] = OneStageOfOFT(obj, tsStage, extent, freqStage)
+        function [freqStage, MftStage, fracErr] = OneStageOfOFT(obj, tsStage, extent)
+            
+            freqStage = [];
+            obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;
             
             % *** Reconnaisance part ***
             if obj.bDoRecon
@@ -171,6 +279,10 @@ classdef OFT
             %- Tries maxNFreqsAtOnce sinusoids at once, and finds up to maxNFreqsTotal.
             %- In:  nu[1..nNu]     Guesses for nu's in the initial iteration, if present (ie if nNu > 0).
             %- Out: nu[1..nNu]     Best estimates of frequency indices of sinusoids in ts.
+
+            if recon, func = 'dev'; else func = obj.optFunc; end
+            obj = obj.setFxHandle(func);
+            
             tsW = tsStage;
             NW = length(tsW);
             
@@ -182,13 +294,13 @@ classdef OFT
             sinPart = zeros(1,maxNFreqsTotal);
             passNArr = zeros(1,maxNFreqsTotal);
             
-            absDev = AbsDevOfTS(tsW,length(tsW));
-            lastAbsDev = 0;
+            Fx = obj.hFx(tsW);
+            lastFx = 0;
             
             nNuInitial = length(nu);
             nNu = 0;
             passN = 0;
-            while nNu < maxNFreqsTotal && absDev > obj.targetAbsDevW && abs(lastAbsDev - absDev) > obj.minChangeAbsDevW
+            while nNu < maxNFreqsTotal && Fx > obj.targetFx && abs(lastFx - Fx) > obj.minChangeFx
                 passN = passN + 1;
                 
                 if nNuInitial > 0
@@ -205,21 +317,22 @@ classdef OFT
                     nuGuessW = nuGuessW(1:nFreqsW);
                 end
                 
-                [nuGuessW] = obj.MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
+                [nuGuessW] = obj.MinimizeFxByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
                 
                 if ~recon
                     bRemoved = true;
                     while bRemoved
                         [nuGuessW, bRemoved] = ConsolidateFreqs(nuGuessW,obj.kNuConsolidate);
-                        [nuGuessW] = obj.MinimizeResidualByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
+                        [nuGuessW] = obj.MinimizeFxByVaryingMultipleFreqs(tsW, nuGuessW, nuMaxCW);
                         nFreqsW = length(nuGuessW);
                     end
                 end
                 
                 [cosPartW, sinPartW] = EstimateContainedSinusoids(tsW, nuGuessW);
-                if nNu + nFreqsW < maxNFreqsTotal
-                    lastAbsDev = absDev;
-                    [tsW, absDev] = SubtractMultipleSinusoidsFromTS (tsW, cosPartW, sinPartW, nuGuessW);
+                if nNu + nFreqsW <= maxNFreqsTotal
+                    lastFx = Fx;
+                    [tsW, ~] = SubtractMultipleSinusoidsFromTS (tsW, cosPartW, sinPartW, nuGuessW);
+                    Fx = obj.hFx(tsW);
                 end
                 
                 for i = 1:nFreqsW
@@ -263,7 +376,7 @@ classdef OFT
             
         end
         % ---------------
-        function [Xk] = dft(obj, xn)
+        function [Xk] = dft(~, xn)
             N = length(xn);         % Length of the input
             Xk=zeros(1,N);          % initialize the output
             i=sqrt(-1);
@@ -304,7 +417,6 @@ classdef OFT
             %- Keep parallel arrays nu and maxAmpSqW, ordered by maxAmps, of the maxNAtOnce biggest ampltudes so far.
             %- In:  Xk[0..nuMaxC]    complex DFT
             %- Out: nu[1..nPeaks]    distinct frequency indices of peak amp., nPeaks <= maxNAtOnce
-            kOfPeakThreshold = 0.005;
             maxAmpSqW = -(ones(1,maxNAtOnce));
             lastAmpSq = -1;
             prevLastAmpSq = -2;
@@ -323,7 +435,7 @@ classdef OFT
             end
             
             % count peaks
-            ampSqThreshold = kOfPeakThreshold * maxAmpSqW(1);
+            ampSqThreshold = obj.kOfPeakThreshold * maxAmpSqW(1);
             if ampSqThreshold <= 0
                 nPeaks = 0;
             else
@@ -357,7 +469,7 @@ classdef OFT
             
         end
         %-------------------
-        function [nu, maxAmpSqW] = UpdateMaxAmpFreqs (obj, nu, newNu, newAmp, maxNAtOnce, maxAmpSqW)
+        function [nu, maxAmpSqW] = UpdateMaxAmpFreqs (~, nu, newNu, newAmp, maxNAtOnce, maxAmpSqW)
             %- maxAmpSqW(1) is the biggest, maxAmpSqW(maxNAtOnce) is the smallest.
             
             % return if smaller than the smallest
@@ -382,7 +494,7 @@ classdef OFT
             end
         end
         %-------------------
-        function [nuGuessW] = MinimizeResidualByVaryingMultipleFreqs(obj, tsStage, nuGuessW, nuMaxCW)
+        function [nuGuessW] = MinimizeFxByVaryingMultipleFreqs(obj, tsStage, nuGuessW, nuMaxCW)
             %- Minimizes ResidualForMultipleFreqs of nFreqsW variables.
             %- Based on the "powell" routine from "Numerical Recipes in C", Press et al, 1988, pages 314-315,
             %  with func = ResidualForMultipleFreqs.
@@ -396,7 +508,7 @@ classdef OFT
             ktolMinMulti = 0.00000005;
             
             nNu = length(nuGuessW);
-            [absDev] = obj.ResidualForMultipleFreqs(tsStage, nuGuessW);
+            [Fx] = obj.FxForMultipleFreqs(tsStage, nuGuessW);
             dirnSetW = zeros(obj.kMaxNFreqsAtOnceOFT,obj.kMaxNFreqsAtOnceOFT);
             nuGuessAtStOfIterW = zeros(1,nNu);
             for i = 1:nNu
@@ -407,7 +519,7 @@ classdef OFT
             iter = 0;
             while true
                 iter = iter + 1;
-                absDevAtStOfIter = absDev;
+                FxAtStOfIter = Fx;
                 biggestDecrease = 0;
                 dirnIxOfBiggestDecrease = 0;
                 dirnW = zeros(1,nNu);
@@ -415,23 +527,29 @@ classdef OFT
                     for j = 1:nNu
                         dirnW(j) = dirnSetW(j,i);
                     end
-                    lastAbsDev = absDev;
-                    [dirnW, nuGuessW, absDev] = obj.MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
-                    decrease = abs(lastAbsDev - absDev);
+                    lastFx = Fx;
+                    [dirnW, nuGuessW, Fx] = obj.MinimizeFxAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                    decrease = abs(lastFx - Fx);
                     if decrease > biggestDecrease
                         biggestDecrease = decrease;
                         dirnIxOfBiggestDecrease = i;
                     end
                 end
                 
+               if obj.bWaitBar
+                    fprintf('iter %d: FxDiff = %e, Threshold = %e\n',iter,FxAtStOfIter - Fx,ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5);
+                 end
+                %__________________________________________________________
+                
+                
                 % finish?
-                if abs(absDevAtStOfIter - absDev) <= ktolMinMulti * (abs(absDevAtStOfIter) + abs(absDev)) * 0.5
+                if abs(FxAtStOfIter - Fx) <= ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5
                     return
                 end
                 
                 if iter >= 30
-                    %msg = sprintf ('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter);
-                    warning('OFT.MinimizeResidualByVaryingMultipleFreqs: %d iterations', iter)
+                    %msg = sprintf ('OFT.MinimizeFxByVaryingMultipleFreqs: %d iterations', iter);
+                    warning('OFT.MinimizeFxByVaryingMultipleFreqs: %d iterations', iter)
                     return
                 end
                 
@@ -444,14 +562,14 @@ classdef OFT
                     nuGuessAtStOfIterW(j) = nuGuessW(j);
                 end
                 
-                [fExtrap] = obj.ResidualForMultipleFreqs(tsStage, extrapolatedNuGuessW);
+                [fExtrap] = obj.FxForMultipleFreqs(tsStage, extrapolatedNuGuessW);
                 
-                if fExtrap < absDevAtStOfIter  % If extrapolated absolute value is lower...
-                    u = (absDevAtStOfIter - absDev) - biggestDecrease;
-                    v = absDevAtStOfIter - fExtrap;
-                    T = 2 * (absDevAtStOfIter - 2 * absDev + fExtrap) * u^2  - biggestDecrease * v^2;
+                if fExtrap < FxAtStOfIter  % If extrapolated absolute value is lower...
+                    u = (FxAtStOfIter - Fx) - biggestDecrease;
+                    v = FxAtStOfIter - fExtrap;
+                    T = 2 * (FxAtStOfIter - 2 * Fx + fExtrap) * u^2  - biggestDecrease * v^2;
                     if T < 0    % reverse direction
-                        [dirnW, nuGuessW, absDev] = obj.MinimizeResidualAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
+                        [dirnW, nuGuessW, Fx] = obj.MinimizeFxAlongOneDirn (dirnW, nuGuessW,nuMaxCW, tsStage);
                         for j = 1:length(nuGuessW)
                             dirnSetW(j, dirnIxOfBiggestDecrease) = dirnW(j);
                         end
@@ -462,29 +580,15 @@ classdef OFT
             
         end
         %---------------------
-        function [absDev] = ResidualForMultipleFreqs(obj, ts, nu)
+        function [Fx] = FxForMultipleFreqs(obj, ts, nu)
             %- The m-function, i.e. the function to be minimized in searching for the nFreqsW sinusoids whose removal
             %  most reduces the absolute deviation of the time series.
             [cosPart, sinPart] = EstimateContainedSinusoids(ts, nu);
-            %fRet = AbsDevAfterSubtractMultipleSinusoidsFromTS(tsStage, nuGuessW, cosPart, sinPart);
-            
-            n = length(ts);
-            twoPiOn = 2 * pi / n;
-            twoPiNuOn = nu * twoPiOn;
-            
-            absDev = 0;
-            for tau = n-1:-1:0
-                x = ts(tau+1);
-                for i = 1:length(nu)
-                    radians = twoPiNuOn(i) * tau;
-                    x = x - (cosPart(i) * cos(radians) + sinPart(i) * sin(radians));
-                end
-                x = abs(x);
-                absDev = absDev + x;
-            end
+            [ts,~] = SubtractMultipleSinusoidsFromTS (ts,cosPart, sinPart, nu);
+            Fx = obj.hFx(ts);
         end
         %--------------------
-        function [dirnW, nuGuessW, minSizeOfResidual] = MinimizeResidualAlongOneDirn (obj, dirnW, nuGuessW, nuMaxCW, ts)
+        function [dirnW, nuGuessW, minSizeOfFx] = MinimizeFxAlongOneDirn (obj, dirnW, nuGuessW, nuMaxCW, ts)
             %- Minimizes absolute deviation along the line (dirnW) in frequency space that goes thru the starting nuGuessW.
             %  Updates nuGuessW with the minimum found, and rescales dirnW using the minimum found.
             %- Based on the "linmin" routine from "Numerical Recipes in C", Press et al, 1988, page 316.
@@ -497,9 +601,9 @@ classdef OFT
             %       dirnW   [1..nFreqsW]  = output nuGuessW - input nuGuessW
             %       minSizeOfResidual     = ResidualForMultipleFreqs(output nuGuessW), the best acheived
             
-            [ax,bx,cx,foundMinimum,xMin,minSizeOfResidual] = obj.BracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
+            [ax,bx,cx,foundMinimum,xMin,minSizeOfFx] = obj.BracketGuess1D(nuGuessW, dirnW, nuMaxCW, ts);
             if ~foundMinimum
-                [xMin, minSizeOfResidual] = obj.MinimizeFn1D(ax, bx, cx, nuGuessW, dirnW, ts);
+                [xMin, minSizeOfFx] = obj.MinimizeFn1D(ax, bx, cx, nuGuessW, dirnW, ts);
             end
             
             for i = 1:length(nuGuessW)
@@ -541,7 +645,7 @@ classdef OFT
             if lo >= hi
                 foundMinimum = true;
                 xMin = lo;
-                [fxMin] = obj.ResidualAlongADirn(xMin, nuGuessW, dirnW, ts);
+                [fxMin] = obj.FxAlongADirn(xMin, nuGuessW, dirnW, ts);
                 return
             end
             
@@ -565,8 +669,8 @@ classdef OFT
             end
             
             % ensure a -> b is downhill
-            fa = obj.ResidualAlongADirn(ax, nuGuessW, dirnW, ts);
-            fb = obj.ResidualAlongADirn(bx, nuGuessW, dirnW, ts);
+            fa = obj.FxAlongADirn(ax, nuGuessW, dirnW, ts);
+            fb = obj.FxAlongADirn(bx, nuGuessW, dirnW, ts);
             if fb > fa      %a <--> b
                 temp = ax;
                 ax = bx;
@@ -580,7 +684,7 @@ classdef OFT
             cx = bx + kGold * (bx - ax);
             if cx < lo; cx = lo; end
             if cx > hi; cx = hi; end
-            fc = obj.ResidualAlongADirn(cx, nuGuessW, dirnW, ts);
+            fc = obj.FxAlongADirn(cx, nuGuessW, dirnW, ts);
             
             % have a new c (i.e. cx and fc)
             while true
@@ -590,7 +694,7 @@ classdef OFT
                 if cx == lo || cx == hi
                     while abs(cx - bx) > kLimitTol * scalor
                         u = 0.5 * (bx + cx);
-                        fu = obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                        fu = obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                         if fc - fu > 1e-9 * abs(fc)
                             ax = bx;
                             bx = u;
@@ -626,7 +730,7 @@ classdef OFT
                 
                 % u in (bx, cx)
                 if (bx - u) * (u - cx) > 0
-                    fu =  obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                    fu =  obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                     if fu < fc  %b->a, u->b, return
                         ax = bx;
                         bx = u;
@@ -640,7 +744,7 @@ classdef OFT
                 else
                     % u in (cx, ulim)
                     if (cx - u) * (u - ulim) > 0
-                        fu = obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                        fu = obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                         if fu < fc % c->b, u->c
                             bx = cx;
                             cx = u;
@@ -652,7 +756,7 @@ classdef OFT
                         % ulim in (cx, u)
                         if (u - ulim) * (ulim - cx) >= 0
                             u = ulim;
-                            fu = obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                            fu = obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                         else
                             takeDefault = true;
                         end
@@ -663,7 +767,7 @@ classdef OFT
                     u = cx + kGold * (cx - bx);
                     if u < lo; u = lo; end
                     if u > hi; u = hi; end
-                    fu = obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                    fu = obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                 end
                 
                 ax = bx;
@@ -675,7 +779,7 @@ classdef OFT
             end
         end
         %--------------------
-        function [lo, hi] = FindValidLimits1D(obj, nuGuessW, dirnW, nuMaxCW)
+        function [lo, hi] = FindValidLimits1D(~, nuGuessW, dirnW, nuMaxCW)
             lo = -9e99;
             hi = 9e99;
             for i = 1:length(nuGuessW)
@@ -704,17 +808,17 @@ classdef OFT
             end
         end
         %-------------------
-        function [fxMin]= ResidualAlongADirn (obj, x, nuGuessW, dirnW, ts)
+        function [fxMin]= FxAlongADirn (obj, x, nuGuessW, dirnW, ts)
             %- 1-D function minimized by MinimizeFn1D, along line in direction dirnW.
             %- Based on the "f1Dim" routine from "Numerical Recipes in C", Press et al, 1988, page 317.
             nuTryW = zeros(1,length(nuGuessW));
             for i=1:length(nuGuessW)
                 nuTryW(i) = nuGuessW(i) + x * dirnW(i);
             end
-            fxMin = obj.ResidualForMultipleFreqs(ts, nuTryW);
+            fxMin = obj.FxForMultipleFreqs(ts, nuTryW);
         end
         %---------------------
-        function    [xMin, minSizeOfResidual] = MinimizeFn1D(obj, ax, bx, cx, nuGuessW, dirnW, ts)
+        function    [xMin, minSizeOfFx] = MinimizeFn1D(obj, ax, bx, cx, nuGuessW, dirnW, ts)
             %- Brent's method for finding the minimum value of a function of one variable.
             %- Sets xMin to the value of x between ax and cx that mimimizes ResidualAlongADirn.
             %- Requires either ax < bx < cx or ax > bx > cx, and
@@ -744,7 +848,7 @@ classdef OFT
             x = bx;
             w = bx;
             v = bx;
-            fx = obj.ResidualAlongADirn(x, nuGuessW, dirnW, ts);
+            fx = obj.FxAlongADirn(x, nuGuessW, dirnW, ts);
             fv = fx;
             fw = fx;
             d = 0;
@@ -755,7 +859,7 @@ classdef OFT
                 tol2 = 2 * tol1;
                 if abs(x - xm) <= (tol2 - 0.5*(b-a))
                     xMin = x;
-                    minSizeOfResidual = fx;
+                    minSizeOfFx = fx;
                     return
                 end
                 
@@ -804,7 +908,7 @@ classdef OFT
                         u = x - abs(tol1);
                     end
                 end
-                [fu] = obj.ResidualAlongADirn(u, nuGuessW, dirnW, ts);
+                [fu] = obj.FxAlongADirn(u, nuGuessW, dirnW, ts);
                 
                 % decrease the size of the bracket
                 if fu <= fx
@@ -842,11 +946,10 @@ classdef OFT
             warning('OFT.MinimizeFn1D did not find minimum in 100 iterations')
             
             xMin = x;
-            minSizeOfResidual = fx;
+            minSizeOfFx = fx;
         end
         %-------------------
         function [nu]=FindBestFreqIxsForRecon(obj, nu,cosPart,sinPart, kNuConsolidate)
-            kOfPeakThreshold = 0.005;
             %- Puts frequency indices with highest amplitudes in nu[1..nNu]. Generally will lower nNu.
             %- Need cos and sin parts as inputs, rather than amplitudes, in order to consolidate frequency indicies.
             %- In:  nu     [1..nNu]  Frequency indicies.
@@ -887,7 +990,7 @@ classdef OFT
                 sinPart(i)=0;
             end
             
-            threshold = kOfPeakThreshold * maxAmpSq;
+            threshold = obj.kOfPeakThreshold * maxAmpSq;
             
             
             % Mark the amplitude squares that exceed threshold with a negative sinPart
@@ -927,7 +1030,7 @@ classdef OFT
             
         end
         %------------------
-        function [nu, bracket] = BracketTheFreqIxs (obj, nu, cosPart, sinPart, passNArr)
+        function [nu, bracket] = BracketTheFreqIxs (~, nu, cosPart, sinPart, passNArr)
             %- Sorts nu and creates the bracket array for the nu's, based on the associated amplitudes.
             %- Brackets are intended for the MFT, in the next stage. The MFT will estimate contained sinusoids
             %  using the frequency indicies in each bracket, separately from those in other brackets.
@@ -1010,7 +1113,7 @@ classdef OFT
                     
                     maxGap = -1;
                     maxIx = passesEnIx;
-                    if loIx < nNu; enIx = loIx; else; enIx = loIx - 1; end
+                    if loIx < nNu; enIx = loIx; else enIx = loIx - 1; end
                     for i = hiIx:enIx
                         g = ampSq(i) / ampSq(i+1); %g >=1
                         if maxGap < g
@@ -1044,9 +1147,49 @@ classdef OFT
                     end
                 end
             end
-        end
-      
+        end      
     end
-%************************************************************************** 
+%************************Functions that will be minimized******************************** 
+
+methods (Access = private)
+    
+    % function used for optFun = 'dev'
+    function Fx = sumAbsDev(~,x)
+        Fx = sum(abs(x));
+    end
+    
+    % function used for optFun = 'acf'
+    function Fx = sumAbsAcf(~,x)
+        N = length(x);
+        acf = ifft(abs(fft(x, 2*N-1)).^2);
+        Fx = sum(abs(acf));
+    end
+    
+    % functions used for optFun = 'kur'
+    function y=krt(~,x)
+        y=(mean(x.^4)-3*(mean(x.^2))^2);
+    end
+    %--------------------
+    function Fx=robkrt(obj,x)    % more robust kurtosis
+        Krt = obj.krt(x);
+        Fx=(1/12)*((mean(x.^3))^2)+(1/48)*(Krt)^2;
+    end
+    %--------------------
+    
+    % Sets the handle to the appropriate function to optimize
+    function obj = setFxHandle(obj,optFunc)
+        switch optFunc
+            case 'kur'
+                handle = @obj.robkrt;
+            case 'acf'
+                handle = @obj.sumAbsAcf;
+            otherwise
+                handle = @obj.sumAbsDev;
+        end
+        obj.hFx = handle;
+    end
+    
+end
+
 end
 

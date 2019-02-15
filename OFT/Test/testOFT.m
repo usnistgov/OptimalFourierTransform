@@ -24,9 +24,8 @@ classdef testOFT < matlab.unittest.TestCase
             testCase.bPause = false;
             testCase.bDoRecon = true;
             % comment out any line below to skip those tests
-%             testConstructor (testCase)
-%             testNyquist (testCase)
-%             testNearDC (testCase)
+             testNyquist (testCase)
+             testNearDC (testCase)
              testLab (testCase)
 %             testACF (testCase)
 %             testSavedData (testCase)
@@ -194,7 +193,7 @@ classdef testOFT < matlab.unittest.TestCase
             testCase.TS.Phases = [0, 90, 45, 230, 0, 20, 15, 0, 215, 0] * pi/180;
             
             testCase.TS.NoiseGaussMean = 0;
-            testCase.TS.NoiseGaussSD = 0;            
+            testCase.TS.NoiseGaussSD = 0.1;            
             
             testCase.TS.Name = 'One Sinusoid';
             testOftOnce (testCase);
@@ -473,7 +472,7 @@ classdef testOFT < matlab.unittest.TestCase
             end
         end
         %-------------------
-        function [y] = Detrend(testCase,x)
+        function [y] = Detrend(~,x)
             T = length(x);
             t = (1:T)';
             X = [ones(T,1) t];

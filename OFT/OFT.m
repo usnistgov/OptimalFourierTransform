@@ -90,7 +90,7 @@ classdef OFT
                     defaultMaxNFreqsPerStage = 8;
                 case 'kur'
                     defaultThreshold = 1e-12; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
-                    defaultRelativeFx = 1e-36;
+                    defaultRelativeFx = 1e-25;
                     defaultMinChangeTargetFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
                     defaultTolMinMulti = 0.05;
                     defaultMaxNFreqsPerStage = 8;                  
@@ -161,11 +161,11 @@ classdef OFT
             
             extent = time(end)+mean(diff(time))-time(1);
             % Initial Fx of the time series
-%             Fx = obj.hFx(ts);
-%             FxOfOriginalTS_W = Fx;
             FxOfOriginalTS_W = obj.hFx(ts);
             Fx = 0;
             obj.targetFx = obj.relativeFx * FxOfOriginalTS_W;
+            fprintf('Original F(x) = %e, Target F(x) = %e\n',FxOfOriginalTS_W,obj.targetFx)
+            
             obj.minChangeFx = obj.kMinChangeTargetFxFraction * obj.targetFx;
             
             % ts for the first stage
@@ -182,16 +182,16 @@ classdef OFT
                 Fx = obj.hFx(tsStage);
                 % exit if the Fx is below the target Fx
                 if Fx < obj.targetFx
-                    disp(Fx);
+                    fprintf('final F(x) = %e\n',Fx);
                     break
                 end
                 % exit if the change in fx is below the minimum change
                 if abs(lastFx-Fx) < obj.minChangeFx
+                    fprintf('final F(x) = %e\n',Fx);
                     break
                 end
                 
                 
-%                [freqStage, MftStage] = obj.OneStageOfOFT(tsStage, extent, freqStage);
                 [freqStage, MftStage] = obj.OneStageOfOFT(tsStage, extent);
 
                 if obj.stageN >=2
@@ -200,6 +200,7 @@ classdef OFT
                     ampSmallest = abs(MftStage(length(freqStage)));
                     ratio = ampSmallest / ampBiggest;
                     if ratio >= 0.4
+                        fprintf('final F(x) = %e\n',Fx);                        
                         break
                     end                   
                  end
@@ -207,12 +208,10 @@ classdef OFT
                 % Append stage sinusoids to result
                 j = nFreqs;
                 nFreqs = nFreqs + length(freqStage);
-%                nuStage = zeros(1,nFreqs);
                 for i = 1:length(freqStage)
                     j = j + 1;
                     freqs(j) = freqStage(i);
                     MFT_OFT(j) = MftStage(i);
-%                    nuStage(j) = freqStage(i) * extent;
                 end  
                 nuStage = freqs * extent;
                 

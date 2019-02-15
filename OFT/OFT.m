@@ -42,7 +42,7 @@ classdef OFT
         relativeFx = 0.000001;
       %  targetFraction = 1e-6;
         kMinChangeTargetFxFraction = 0.0001;
-        kTolMinMulti = 0.005;
+        ktolMinMulti = 0.005;
        
         
     end
@@ -85,21 +85,18 @@ classdef OFT
                 case 'acf'
                     defaultThreshold = 1e-12; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
                     defaultRelativeFx = 1e-5;
-      %              defaultTargetFraction = 1e-3;
                     defaultMinChangeTargetFraction = 0.1;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
                     defaultTolMinMulti = 0.05;
                     defaultMaxNFreqsPerStage = 8;
                 case 'kur'
-                    defaultThreshold = 1e-8; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
-                    defaultRelativeFx = 1e-15;
-      %              defaultTargetFraction = 1e-6;
+                    defaultThreshold = 1e-12; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
+                    defaultRelativeFx = 1e-36;
                     defaultMinChangeTargetFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
                     defaultTolMinMulti = 0.05;
                     defaultMaxNFreqsPerStage = 8;                  
                 otherwise % 'dev'
                     defaultThreshold = 0.005; % Threshold of the absDev to be used to stop the OFT when ~bDoACF;
                     defaultRelativeFx = 0.000001;
-      %              defaultTargetFraction = 1e-6;
                     defaultMinChangeTargetFraction = 0.0001;  % The fraction of targetAbsDevW to be used as a threshold to end OneStageACF
                     defaultTolMinMulti = 0.00000005;
                     defaultMaxNFreqsPerStage = 10;
@@ -118,9 +115,8 @@ classdef OFT
             addOptional(p,'bPause',defaultPause,@islogical)
             addOptional(p,'kOfPeakThreshold', defaultThreshold, validScalarPosNum)
             addOptional(p,'relativeFx', defaultRelativeFx, validScalarPosNum)
-      %      addOptional(p,'targetFraction', defaultTargetFraction, validScalarPosNum)
             addOptional(p,'kMinChangeTargetFraction', defaultMinChangeTargetFraction, validScalarPosNum)
-            addOptional(p,'kTolMinMulti', defaultTolMinMulti, validScalarPosNum)
+            addOptional(p,'ktolMinMulti', defaultTolMinMulti, validScalarPosNum)
             addOptional(p,'kMaxNFreqsPerStage',defaultMaxNFreqsPerStage, validScalarPosNum)
             
             parse(p,optFunc,varargin{:});
@@ -130,9 +126,8 @@ classdef OFT
             obj.bPause = p.Results.bPause;
             obj.kOfPeakThreshold = p.Results.kOfPeakThreshold;
             obj.relativeFx = p.Results.relativeFx;
-      %      obj.targetFraction = p.Results.targetFraction;
             obj.kMinChangeTargetFxFraction = p.Results.kMinChangeTargetFraction;
-            obj.kTolMinMulti =  p.Results.kTolMinMulti;
+            obj.ktolMinMulti =  p.Results.ktolMinMulti;
             obj.kMaxNFreqsPerStage = p.Results.kMaxNFreqsPerStage;
             
         end
@@ -187,6 +182,7 @@ classdef OFT
                 Fx = obj.hFx(tsStage);
                 % exit if the Fx is below the target Fx
                 if Fx < obj.targetFx
+                    disp(Fx);
                     break
                 end
                 % exit if the change in fx is below the minimum change
@@ -223,6 +219,8 @@ classdef OFT
                 % Compute the TS for the next stage
                 [tsStage, ~] = SubtractMultipleSinusoidsFromTS (ts, real(MFT_OFT), imag(MFT_OFT), nuStage);
                 
+                plot(tsStage);
+                
                 obj.maxNFreqsPerStage = obj.kMaxNFreqsPerStage;     %Following stages will do the max frequencies per stage
                 
             end
@@ -231,12 +229,12 @@ classdef OFT
             if obj.stageN == 1
                 [fracErr] = FractionalError(ts, extent, freqs, MFT_OFT);
             else
-                [freqs] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
+                [freqs,MFT_OFT] = SortSinusoidsByAmplitude (freqs, MFT_OFT, obj.kRemoveFraction);
                 fracErr = Fx / FxOfOriginalTS_W;
             end
             
             if ishandle(obj.Fig1)
-                uiwait(msgbox('Done','done'))
+                if obj.bPause, uiwait(msgbox('Done','done')), end
                 close(obj.Fig1);
             end
         end
@@ -505,7 +503,6 @@ classdef OFT
             %- Finish when an iteration fails to reduce ResidualForMultipleFreqs by ktolMinMulti, relatively.
             
             % Constants
-            ktolMinMulti = 0.00000005;
             
             nNu = length(nuGuessW);
             [Fx] = obj.FxForMultipleFreqs(tsStage, nuGuessW);
@@ -537,13 +534,13 @@ classdef OFT
                 end
                 
                if obj.bWaitBar
-                    fprintf('iter %d: FxDiff = %e, Threshold = %e\n',iter,FxAtStOfIter - Fx,ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5);
+                    fprintf('iter %d: FxDiff = %e, Threshold = %e\n',iter,FxAtStOfIter - Fx,obj.ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5);
                  end
                 %__________________________________________________________
                 
                 
                 % finish?
-                if abs(FxAtStOfIter - Fx) <= ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5
+                if abs(FxAtStOfIter - Fx) <= obj.ktolMinMulti * (abs(FxAtStOfIter) + abs(Fx)) * 0.5
                     return
                 end
                 
@@ -1181,6 +1178,7 @@ methods (Access = private)
         switch optFunc
             case 'kur'
                 handle = @obj.robkrt;
+%                 handle = @obj.krt;
             case 'acf'
                 handle = @obj.sumAbsAcf;
             otherwise

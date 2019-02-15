@@ -89,7 +89,7 @@ kNuEgdeWidth = 0.00005;
 %- The solution is to declare the zone close to the edge "the edge zone", where the edge zone covers all
 %  the nu's where the roundoff error in suprod values is significant. In the edge zone, simply treat the
 %  nu as at the edge, and thus omit the equation from the "aa" matrix.
-%- Set the edge zone by trial and error, guided by assorted_TestEstimatingMultipleContainedSinusoids.
+%- Set the edge zone by trial and error, guided by testEstimateContainedSinusoids.tuneNuEdgeWidth.
 %  Obvously want the edge width to be as small as possible to get more accurate results, but big enough
 %  to avoid the effect of roundoff in computing suprod values.
 %- The value of aa that is the smallest, and thus most vulnerable to suprod roundoff, is at the

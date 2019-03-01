@@ -77,6 +77,9 @@ kMaxNSAtOnce = length(nu_MFT);
 nFreqsDone = 0;
 bracketIx = 0;
 nLeftThisBracket = 0;
+freqs = [];
+MFT = [];
+
 while nFreqsDone < length(nu_MFT)
     nNuV = kMaxNSAtOnce;
     if ~isempty(bracket)        % Do all bracketing here

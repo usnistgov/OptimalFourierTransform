@@ -171,6 +171,7 @@ classdef OFT
             % ts for the first stage
             tsStage = ts;
             freqStage = [];
+            freqs = [];
             nFreqs = 0;
             
             
